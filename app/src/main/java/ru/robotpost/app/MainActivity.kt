@@ -2,6 +2,9 @@ package ru.robotpost.app
 
 import android.content.Context
 import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.*
@@ -31,6 +34,21 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("robotpost", Context.MODE_PRIVATE)
+        var pendingText = ""
+        val saveText = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri: Uri? ->
+            if (uri != null) {
+                try {
+                    contentResolver.openOutputStream(uri)?.use { it.write(pendingText.toByteArray(Charsets.UTF_8)) }
+                    android.widget.Toast.makeText(this, "Описание сохранено", android.widget.Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    android.widget.Toast.makeText(this, "Ошибка сохранения", android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+        window.statusBarColor = android.graphics.Color.rgb(12, 16, 25)
+        window.navigationBarColor = android.graphics.Color.rgb(23, 29, 42)
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility = 0
         setContent {
             val colors = darkColorScheme(
                 background = Ink, surface = Ink, surfaceContainer = Panel,
@@ -184,6 +202,25 @@ class MainActivity : ComponentActivity() {
                                                         clipboard.setPrimaryClip(android.content.ClipData.newPlainText("RobotPost", cleaned))
                                                     }, modifier = Modifier.fillMaxWidth()
                                                 ) { Text("Копировать описание") }
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        pendingText = cleaned
+                                                        saveText.launch("description.txt")
+                                                    },
+                                                    enabled = cleaned.isNotBlank(),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) { Text("Сохранить TXT на телефон") }
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        val share = Intent(Intent.ACTION_SEND).apply {
+                                                            type = "text/plain"
+                                                            putExtra(Intent.EXTRA_TEXT, cleaned)
+                                                        }
+                                                        startActivity(Intent.createChooser(share, "Поделиться описанием"))
+                                                    },
+                                                    enabled = cleaned.isNotBlank(),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) { Text("Поделиться текстом") }
                                                 OutlinedButton(onClick = {
                                                     description = cleaned
                                                     prefs.edit().putString("description", cleaned).apply()
@@ -226,12 +263,9 @@ class MainActivity : ComponentActivity() {
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Column(Modifier.weight(1f)) {
                                                     Text("Автопроверка каналов", fontWeight = FontWeight.SemiBold)
-                                                    Text("Параметр для будущей фоновой проверки", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                                    Text("Будет доступна после подключения загрузчика", color = Muted, style = MaterialTheme.typography.bodySmall)
                                                 }
-                                                Switch(checked = autoCheck, onCheckedChange = {
-                                                    autoCheck = it
-                                                    prefs.edit().putBoolean("autoCheck", it).apply()
-                                                })
+                                                Switch(checked = false, onCheckedChange = null)
                                             }
                                         }
                                     }
