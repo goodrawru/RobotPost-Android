@@ -333,7 +333,7 @@ class MainActivity : ComponentActivity() {
                                             Text("Твоя медиатека. На телефоне.", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                                             Text("Сохраняй каналы, подготавливай описания и управляй локальным архивом.", color = Muted)
                                             Text("● Локальная медиатека доступна", color = Mint, style = MaterialTheme.typography.bodySmall)
-                                            Button(onClick = { page = 2 }, modifier = Modifier.fillMaxWidth()) { Text("Добавить ссылку на видео") }
+                                            Button(onClick = { page = 2 }, modifier = Modifier.fillMaxWidth()) { Text("＋  Добавить ссылку на видео") }
                                         }
                                     }
                                 }
@@ -564,11 +564,12 @@ class MainActivity : ComponentActivity() {
                                                         singleSaveMode = mode
                                                         prefs.edit().putString("singleSaveMode", mode).apply()
                                                     })
-                                                    Text(label)
+                                                    Text(label, style = MaterialTheme.typography.bodyMedium)
                                                 }
+                                                HorizontalDivider(thickness = 0.5.dp, color = Separator)
                                             }
                                             OutlinedButton(onClick = { chooseRoot.launch(null) }, modifier = Modifier.fillMaxWidth()) {
-                                                Text(if (chosenRoot.isBlank()) "Выбрать папку архива" else "Изменить папку архива")
+                                                Text(if (chosenRoot.isBlank()) "▣  Выбрать папку архива" else "▣  Изменить папку архива")
                                             }
                                             Button(
                                                 enabled = !downloadBusy && chosenRoot.isNotBlank() && selectedFormat.isNotBlank() && !inspecting,
@@ -765,6 +766,7 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }
                                             Text("Для очереди выбирается максимальное качество из настроек. Для одиночного видео доступны все совместимые форматы. Ошибочные загрузки сохраняются для повторной попытки.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                            HorizontalDivider(thickness = 1.dp, color = Separator)
                                             Text("Режим сохранения", color = Accent, fontWeight = FontWeight.SemiBold)
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 RadioButton(selected = !playlistVideoOnly, onClick = {
@@ -773,6 +775,7 @@ class MainActivity : ComponentActivity() {
                                                 })
                                                 Text("Полный комплект: MP4 + M4A + TXT")
                                             }
+                                            HorizontalDivider(thickness = 0.5.dp, color = Separator)
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 RadioButton(selected = playlistVideoOnly, onClick = {
                                                     playlistVideoOnly = true
@@ -782,6 +785,7 @@ class MainActivity : ComponentActivity() {
                                                 })
                                                 Text("Только видео: MP4 со звуком в папке плейлиста")
                                             }
+                                            HorizontalDivider(thickness = 1.dp, color = Separator)
                                             if (playlistVideoOnly) Text("Для видео, добавленных из плейлиста, создаётся общая папка с названием плейлиста. Отдельные аудио и TXT не сохраняются.",
                                                 color = Muted, style = MaterialTheme.typography.bodySmall)
                                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -826,7 +830,7 @@ class MainActivity : ComponentActivity() {
                                                         queueStatus = "Не удалось запустить службу: " + (e.localizedMessage ?: "ошибка")
                                                     }
                                                 }
-                                            ) { Text(if (queueRunning) "Очередь выполняется..." else "Скачать всю очередь") }
+                                            ) { Text(if (queueRunning) "◌  Очередь выполняется..." else "↓  Скачать всю очередь") }
                                             if (queueStatus.isNotBlank()) Text(queueStatus, color = if (queueStatus.startsWith("Очередь остановлена")) Color(0xFFFF9999) else Mint)
                                             if (queueRunning) OutlinedButton(
                                                 onClick = {
