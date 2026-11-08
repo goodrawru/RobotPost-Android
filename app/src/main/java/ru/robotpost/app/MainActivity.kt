@@ -160,6 +160,10 @@ class MainActivity : ComponentActivity() {
                         }
                         pendingQueue = prefs.getString("pendingQueue", "").orEmpty().lines().filter { it.isNotBlank() }
                         failedQueue = prefs.getString("failedQueue", "").orEmpty().lines().filter { it.isNotBlank() }
+                        failureReasons = runCatching {
+                            val json = JSONObject(prefs.getString("failureReasons", "{}") ?: "{}")
+                            json.keys().asSequence().associateWith { key -> json.optString(key) }
+                        }.getOrDefault(emptyMap<String, String>())
                         history = DownloadHistory.list(this@MainActivity)
                         delay(1000)
                     }
