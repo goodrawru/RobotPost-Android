@@ -126,6 +126,7 @@ class MainActivity : ComponentActivity() {
                 var pendingQueue by remember { mutableStateOf(prefs.getString("pendingQueue", "")!!.lines().filter { it.isNotBlank() }) }
                 var queueRunning by remember { mutableStateOf(false) }
                 var queueStopRequested by remember { mutableStateOf(false) }
+                var queueSelected by remember { mutableStateOf(setOf<String>()) }
                 var failedQueue by remember { mutableStateOf(prefs.getString("failedQueue", "")!!.lines().filter { it.isNotBlank() }) }
                 var queueStatus by remember { mutableStateOf("") }
                 var playlistUrl by remember { mutableStateOf("") }
@@ -745,18 +746,59 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 ) { Text("Повторить неудачные") }
                                             }
+                                            if (pendingQueue.isNotEmpty()) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text("Выбрано: ${queueSelected.count { it in pendingQueue }}", modifier = Modifier.weight(1f))
+                                                    TextButton(onClick = { queueSelected = pendingQueue.toSet() }, enabled = !queueRunning) { Text("Все") }
+                                                    TextButton(onClick = { queueSelected = emptySet() }, enabled = !queueRunning) { Text("Сброс") }
+                                                }
+                                                OutlinedButton(
+                                                    enabled = !queueRunning && !downloadBusy && queueSelected.any { it in pendingQueue },
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    onClick = {
+                                                        pendingQueue = pendingQueue.filterNot { it in queueSelected }
+                                                        queueSelected = emptySet()
+                                                        prefs.edit().putString("pendingQueue", pendingQueue.joinToString("\n")).apply()
+                                                    }
+                                                ) { Text("Удалить выбранные из очереди") }
+                                            }
                                             pendingQueue.forEachIndexed { index, queued ->
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Text("${index + 1}. " + queued.substringBefore("?"), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                    Checkbox(
+                                                        checked = queued in queueSelected,
+                                                        onCheckedChange = { checked ->
+                                                            queueSelected = if (checked) queueSelected + queued else queueSelected - queued
+                                                        },
+                                                        enabled = !queueRunning && !downloadBusy
+                                                    )
+                                                    Text("${index + 1}. " + queued.substringBefore("?"),
+                                                        modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                    TextButton(
+                                                        onClick = {
+                                                            pendingQueue = pendingQueue.toMutableList().apply {
+                                                                add(index - 1, removeAt(index))
+                                                            }
+                                                            prefs.edit().putString("pendingQueue", pendingQueue.joinToString("\n")).apply()
+                                                        },
+                                                        enabled = index > 0 && !queueRunning && !downloadBusy,
+                                                        contentPadding = PaddingValues(horizontal = 2.dp)
+                                                    ) { Text("↑") }
+                                                    TextButton(
+                                                        onClick = {
+                                                            pendingQueue = pendingQueue.toMutableList().apply {
+                                                                add(index + 1, removeAt(index))
+                                                            }
+                                                            prefs.edit().putString("pendingQueue", pendingQueue.joinToString("\n")).apply()
+                                                        },
+                                                        enabled = index < pendingQueue.lastIndex && !queueRunning && !downloadBusy,
+                                                        contentPadding = PaddingValues(horizontal = 2.dp)
+                                                    ) { Text("↓") }
                                                     TextButton(onClick = {
                                                         linkInput = queued
                                                         pendingQueue = pendingQueue - queued
+                                                        queueSelected = queueSelected - queued
                                                         prefs.edit().putString("pendingQueue", pendingQueue.joinToString("\n")).apply()
                                                     }, enabled = !downloadBusy) { Text("Выбрать") }
-                                                    TextButton(onClick = {
-                                                        pendingQueue = pendingQueue - queued
-                                                        prefs.edit().putString("pendingQueue", pendingQueue.joinToString("\n")).apply()
-                                                    }) { Text("×") }
                                                 }
                                             }
                                         }
