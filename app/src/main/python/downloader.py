@@ -15,7 +15,7 @@ def _check_url(url):
 
 def _options(profile="legacy"):
     opts = {
-        "noplaylist": True, "quiet": True, "no_warnings": True,
+        "noplaylist": True, "quiet": True, "no_warnings": False,
         "retries": 4, "fragment_retries": 4, "socket_timeout": 35,
     }
     # The extractor's own defaults are deliberately tried first on newer
