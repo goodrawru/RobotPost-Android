@@ -29,11 +29,33 @@ object DownloadEngine {
     fun inspect(context: Context, url: String): JSONObject =
         JSONObject(python(context).getModule("downloader").callAttr("inspect_video", url).toString())
 
-    fun download(context: Context, url: String, root: Uri, formatId: String): String {
+    fun download(context: Context, url: String, root: Uri, formatId: String, onTemp: (File) -> Unit = {}, onProgress: (String) -> Unit = {}): String {
         val temp = File(context.cacheDir, "robotpost_" + UUID.randomUUID().toString()).apply { mkdirs() }
+        onTemp(temp)
         try {
-            val json = python(context).getModule("downloader")
-                .callAttr("download_video", url, temp.absolutePath, formatId).toString()
+            val watcher = Thread {
+                val status = File(temp, "progress.json")
+                while (!Thread.currentThread().isInterrupted) {
+                    try {
+                        if (status.isFile) {
+                            val data = JSONObject(status.readText())
+                            val stage = if (data.optString("stage") == "audio") "Аудио" else "Видео"
+                            val percent = data.optDouble("percent", -1.0)
+                            val speed = data.optDouble("speed", 0.0) / 1048576.0
+                            val message = if (percent >= 0) "$stage: ${percent.toInt()}% · ${"%.1f".format(Locale.ROOT, speed)} МБ/с" else "$stage: скачивание..."
+                            onProgress(message)
+                        }
+                        Thread.sleep(500)
+                    } catch (_: InterruptedException) {
+                        break
+                    } catch (_: Exception) { }
+                }
+            }.apply { isDaemon = true; start() }
+            val json = try {
+                python(context).getModule("downloader")
+                    .callAttr("download_video", url, temp.absolutePath, formatId).toString()
+            } finally { watcher.interrupt() }
+            if (File(temp, "cancel.flag").exists()) error("Загрузка отменена пользователем")
             val info = JSONObject(json)
             val videoPath = info.optString("video")
             val audioPath = info.optString("audio")
@@ -50,6 +72,7 @@ object DownloadEngine {
             val date = if (Regex("[0-9]{8}").matches(stamp))
                 "${stamp.substring(6, 8)}.${stamp.substring(4, 6)}.${stamp.substring(2, 4)}"
             else SimpleDateFormat("dd.MM.yy", Locale.ROOT).format(Date())
+            if (File(temp, "cancel.flag").exists()) error("Загрузка отменена пользователем")
             return ArchiveExporter.export(
                 context, root,
                 info.optString("channel", "YouTube"), info.optString("title", "Видео"),
