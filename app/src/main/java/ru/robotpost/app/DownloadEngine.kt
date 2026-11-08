@@ -26,6 +26,9 @@ object DownloadEngine {
         }
     }
 
+    fun playlist(context: Context, url: String, limit: Int = 100): JSONObject =
+        JSONObject(python(context).getModule("downloader").callAttr("inspect_playlist", url, limit).toString())
+
     fun inspect(context: Context, url: String): JSONObject =
         JSONObject(python(context).getModule("downloader").callAttr("inspect_video", url).toString())
 
