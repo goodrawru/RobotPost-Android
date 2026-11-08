@@ -144,8 +144,12 @@ class DownloadForegroundService : Service() {
                 } finally {
                     activeTemp = null
                 }
-                // Persist failure metadata before dequeuing; a crash must not silently lose a URL.
-                prefs.edit().putString("pendingQueue", pending.drop(1).joinToString("\n")).commit()
+                // Remove the processed URL from the latest persisted queue, not a stale snapshot.
+                // This preserves links added by the user while the service was running.
+                val current = prefs.getString("pendingQueue", "").orEmpty()
+                    .lines().filter { it.isNotBlank() }.toMutableList()
+                current.remove(url)
+                prefs.edit().putString("pendingQueue", current.joinToString("\n")).commit()
             }
         } finally {
             val message = if (stopping) "Остановлено · готово: $completed · ошибок: $failed"
