@@ -130,6 +130,16 @@ class DownloadForegroundService : Service() {
                     }
                     DownloadHistory.add(this@DownloadForegroundService, saved, url,
                         if (playlistMode) playlistMeta?.optString("title").orEmpty() else "")
+                    // A successful retry must disappear from the failure list and its error map.
+                    val previousFailures = prefs.getString("failedQueue", "").orEmpty()
+                        .lines().filter { it.isNotBlank() && it != url }
+                    val previousReasons = runCatching {
+                        JSONObject(prefs.getString("failureReasons", "{}") ?: "{}")
+                    }.getOrDefault(JSONObject())
+                    previousReasons.remove(url)
+                    prefs.edit()
+                        .putString("failedQueue", previousFailures.joinToString("\n"))
+                        .putString("failureReasons", previousReasons.toString()).commit()
                     completed++
                 } catch (e: Exception) {
                     if (stopping) break
