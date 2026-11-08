@@ -42,6 +42,7 @@ def _available(info):
                             "height": f.get("height") or 0, "kind": "merge"})
         choices.append({"id": "audio:" + str(best_audio["format_id"]),
                         "label": "Только аудио · M4A", "height": -1, "kind": "audio"})
+    choices = [c for c in choices if c["height"] <= 720]
     choices.sort(key=lambda c: (c["height"], c["kind"] == "single"), reverse=True)
     return choices
 
