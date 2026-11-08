@@ -243,3 +243,36 @@ def latest_channel_videos(channel_url):
         if len(result) == 5:
             break
     return json.dumps(result, ensure_ascii=False)
+
+
+def inspect_playlist(playlist_url, limit=100):
+    """Read playlist entries without downloading media; cap expansion for mobile."""
+    url = _check_url(playlist_url)
+    parsed = urlparse(url)
+    from urllib.parse import parse_qs
+    if not parse_qs(parsed.query).get("list") and "/playlist" not in parsed.path:
+        raise ValueError("Нужна ссылка YouTube-плейлиста с параметром list")
+    limit = max(1, min(int(limit), 100))
+    opts = _options("auto")
+    opts.update({"noplaylist": False, "extract_flat": "in_playlist",
+                 "playlistend": limit, "ignoreerrors": True})
+    with YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    if not info or not info.get("entries"):
+        raise RuntimeError("Плейлист пуст или недоступен")
+    entries = []
+    seen = set()
+    for item in info.get("entries") or []:
+        if not item:
+            continue
+        video_id = str(item.get("id") or "")
+        if not video_id or video_id in seen:
+            continue
+        seen.add(video_id)
+        entries.append({"title": item.get("title") or "Видео",
+                        "url": "https://www.youtube.com/watch?v=" + video_id})
+    if not entries:
+        raise RuntimeError("В плейлисте нет доступных видео")
+    return json.dumps({"title": info.get("title") or "Плейлист",
+                       "entries": entries, "limited": len(entries) >= limit},
+                      ensure_ascii=False)
