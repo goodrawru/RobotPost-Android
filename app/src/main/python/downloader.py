@@ -12,11 +12,11 @@ def _check_url(url):
         raise ValueError("Нужна ссылка https://youtube.com или https://youtu.be")
     return url
 
-def _options():
+def _options(profile="legacy"):
     return {
         "noplaylist": True, "quiet": True, "no_warnings": True,
         "retries": 4, "fragment_retries": 4, "socket_timeout": 35,
-        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        "extractor_args": {"youtube": {"player_client": {"legacy": ["android", "web"], "alternate": ["web_safari", "ios", "android"], "tv": ["tv", "web"]}.get(profile, ["android", "web"])}},
     }
 
 def _available(info):
@@ -51,12 +51,28 @@ def _available(info):
     choices.sort(key=lambda c: (c["height"], c["kind"] == "single"), reverse=True)
     return choices
 
+def _inspect_best(url):
+    best_info, best_choices, best_profile = None, [], "legacy"
+    failures = []
+    for profile in ("legacy", "alternate", "tv"):
+        try:
+            with YoutubeDL(_options(profile)) as ydl:
+                info = ydl.extract_info(url, download=False)
+            choices = _available(info)
+            if best_info is None or max((x["height"] for x in choices), default=0) > max((x["height"] for x in best_choices), default=0):
+                best_info, best_choices, best_profile = info, choices, profile
+            if max((x["height"] for x in best_choices), default=0) >= 720:
+                break
+        except Exception as exc:
+            failures.append(str(exc)[:180])
+    if best_info is None:
+        raise RuntimeError("Не удалось получить форматы: " + "; ".join(failures))
+    return best_info, best_choices, best_profile
+
 def inspect_video(url):
-    with YoutubeDL(_options()) as ydl:
-        info = ydl.extract_info(_check_url(url), download=False)
-    if not info:
-        raise RuntimeError("Не удалось получить сведения о видео")
-    choices = _available(info)
+    info, choices, profile = _inspect_best(_check_url(url))
+    for choice in choices:
+        choice["id"] = profile + "|" + choice["id"]
     raw_formats = info.get("formats") or []
     diagnostics = []
     for fmt in raw_formats:
@@ -75,6 +91,7 @@ def inspect_video(url):
         "title": info.get("title") or "Видео",
         "channel": info.get("channel") or info.get("uploader") or "YouTube",
         "formats": choices,
+        "profile": profile,
         "diagnostics": diagnostics[:40],
     }, ensure_ascii=False)
 
@@ -88,8 +105,8 @@ def _get_file(info, ydl):
         return path
     raise RuntimeError("Файл не найден после скачивания")
 
-def _fetch(url, directory, fmt_id, prefix):
-    opts = _options()
+def _fetch(url, directory, fmt_id, prefix, profile="legacy"):
+    opts = _options(profile)
     opts.update({"format": fmt_id, "outtmpl": os.path.join(directory, prefix + ".%(ext)s"),
                  "overwrites": True, "restrictfilenames": True})
     with YoutubeDL(opts) as ydl:
@@ -99,23 +116,29 @@ def _fetch(url, directory, fmt_id, prefix):
 def download_video(url, directory, choice):
     url = _check_url(url)
     os.makedirs(directory, exist_ok=True)
-    with YoutubeDL(_options()) as ydl:
+    if "|" in choice:
+        profile, selection = choice.split("|", 1)
+    else:
+        profile, selection = "legacy", choice
+    if profile not in ("legacy", "alternate", "tv"):
+        raise ValueError("Неизвестный профиль загрузки")
+    with YoutubeDL(_options(profile)) as ydl:
         info = ydl.extract_info(url, download=False)
     valid = {item["id"] for item in _available(info)}
-    if choice not in valid:
+    if selection not in valid:
         raise ValueError("Формат изменился. Обнови список форматов.")
-    kind, fmt = choice.split(":", 1)
+    kind, fmt = selection.split(":", 1)
     paths = []
     if kind == "merge":
         video_id, audio_id = fmt.split("+", 1)
-        _, video = _fetch(url, directory, video_id, "video")
-        _, audio = _fetch(url, directory, audio_id, "audio")
+        _, video = _fetch(url, directory, video_id, "video", profile)
+        _, audio = _fetch(url, directory, audio_id, "audio", profile)
         paths = [video, audio]
     elif kind == "audio":
-        _, audio = _fetch(url, directory, fmt, "audio")
+        _, audio = _fetch(url, directory, fmt, "audio", profile)
         paths = ["", audio]
     else:
-        _, video = _fetch(url, directory, fmt, "video")
+        _, video = _fetch(url, directory, fmt, "video", profile)
         paths = [video, ""]
     return json.dumps({
         "video": paths[0], "audio": paths[1], "merge": kind == "merge",
