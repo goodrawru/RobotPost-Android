@@ -144,6 +144,7 @@ class DownloadForegroundService : Service() {
                 } finally {
                     activeTemp = null
                 }
+                if (stopping) break // Keep interrupted URL in pendingQueue for an explicit retry.
                 // Remove the processed URL from the latest persisted queue, not a stale snapshot.
                 // This preserves links added by the user while the service was running.
                 val current = prefs.getString("pendingQueue", "").orEmpty()
