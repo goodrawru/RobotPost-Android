@@ -1,5 +1,6 @@
 import json
 import os
+import time
 import yt_dlp
 from urllib.parse import urlparse
 from yt_dlp import YoutubeDL
@@ -147,8 +148,33 @@ def _get_file(info, ydl):
         return path
     raise RuntimeError("Файл не найден после скачивания")
 
+def _progress_hook(directory, stage):
+    last = [0.0]
+    def hook(data):
+        if os.path.exists(os.path.join(directory, "cancel.flag")):
+            raise RuntimeError("Загрузка отменена пользователем")
+        now = time.monotonic()
+        if data.get("status") == "downloading" and now - last[0] < 0.35:
+            return
+        last[0] = now
+        total = data.get("total_bytes") or data.get("total_bytes_estimate") or 0
+        downloaded = data.get("downloaded_bytes") or 0
+        percent = round(100.0 * downloaded / total, 1) if total else -1
+        payload = {"stage": stage, "percent": percent,
+                   "downloaded": downloaded, "total": total,
+                   "speed": data.get("speed") or 0,
+                   "eta": data.get("eta")}
+        target = os.path.join(directory, "progress.json")
+        temp = target + ".tmp"
+        with open(temp, "w", encoding="utf-8") as out:
+            json.dump(payload, out)
+        os.replace(temp, target)
+    return hook
+
+
 def _fetch(url, directory, fmt_id, prefix, profile="legacy"):
     opts = _options(profile)
+    opts["progress_hooks"] = [_progress_hook(directory, prefix)]
     opts.update({"format": fmt_id, "outtmpl": os.path.join(directory, prefix + ".%(ext)s"),
                  "overwrites": True, "restrictfilenames": True})
     with YoutubeDL(opts) as ydl:
@@ -158,6 +184,8 @@ def _fetch(url, directory, fmt_id, prefix, profile="legacy"):
 def download_video(url, directory, choice):
     url = _check_url(url)
     os.makedirs(directory, exist_ok=True)
+    if os.path.exists(os.path.join(directory, "cancel.flag")):
+        raise RuntimeError("Загрузка отменена пользователем")
     if "|" in choice:
         profile, selection = choice.split("|", 1)
     else:
