@@ -881,6 +881,7 @@ class MainActivity : ComponentActivity() {
                                                     }, enabled = !downloadBusy) { Text("Выбрать") }
                                                 }
                                             }
+                                            }
                                         }
                                     }
                                 }
