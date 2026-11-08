@@ -12,6 +12,25 @@ import java.util.Locale
 import java.util.UUID
 
 object DownloadEngine {
+    /** Translate common transport failures into actionable Russian messages. */
+    fun readableError(error: Throwable): String {
+        val raw = generateSequence(error) { it.cause }.mapNotNull { it.message }
+            .joinToString(" | ")
+        val lower = raw.lowercase(Locale.ROOT)
+        return when {
+            "no address associated with hostname" in lower ||
+                "name or service not known" in lower ||
+                "temporary failure in name resolution" in lower ||
+                "nodename nor servname provided" in lower ->
+                "DNS не может определить адрес YouTube. Проверьте интернет, VPN и частный DNS Android. " +
+                    "Переподключите VPN и повторите загрузку."
+            "timed out" in lower || "timeout" in lower ->
+                "Превышено время ожидания YouTube. Проверьте VPN и соединение, затем повторите."
+            "network is unreachable" in lower || "connection refused" in lower ->
+                "Нет соединения с сервером YouTube. Проверьте сеть и VPN."
+            else -> error.localizedMessage ?: "Неизвестная ошибка загрузки"
+        }
+    }
     private fun python(context: Context): Python {
         if (!Python.isStarted()) Python.start(AndroidPlatform(context.applicationContext))
         return Python.getInstance()
