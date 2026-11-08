@@ -678,6 +678,15 @@ class MainActivity : ComponentActivity() {
                                                     queueStopRequested = false
                                                     queueRunning = true
                                                     prefs.edit().putBoolean("queueWasRunning", true).apply()
+                                                    try {
+                                                        androidx.core.content.ContextCompat.startForegroundService(
+                                                            this@MainActivity,
+                                                            Intent(this@MainActivity, DownloadForegroundService::class.java)
+                                                                .setAction(DownloadForegroundService.ACTION_START)
+                                                        )
+                                                    } catch (e: Exception) {
+                                                        queueStatus = "Фоновый режим недоступен: " + (e.localizedMessage ?: "ошибка")
+                                                    }
                                                     downloadBusy = true
                                                     queueStatus = "Подготовка очереди..."
                                                     DownloadNotifications.show(this@MainActivity, "RobotPost · загрузки", "Подготовка очереди")
@@ -735,6 +744,8 @@ class MainActivity : ComponentActivity() {
                                                             queueStatus = "Очередь остановлена: " + (e.localizedMessage ?: "Ошибка")
                                                         } finally {
                                                             activeDownloadDirectory = null
+                                                            stopService(Intent(this@MainActivity, DownloadForegroundService::class.java)
+                                                                .setAction(DownloadForegroundService.ACTION_STOP))
                                                             DownloadNotifications.finish(this@MainActivity, queueStatus)
                                                             queueRunning = false
                                                             prefs.edit().putBoolean("queueWasRunning", false).apply()
