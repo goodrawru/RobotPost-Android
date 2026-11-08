@@ -56,7 +56,10 @@ class MainActivity : ComponentActivity() {
                 onBackground = Color(0xFFF4F5FA), secondary = Mint
             )
             MaterialTheme(colorScheme = colors) {
-                var page by remember { mutableIntStateOf(0) }
+                var page by remember { mutableIntStateOf(if (intent?.action == Intent.ACTION_SEND) 2 else 0) }
+                var savedLinks by remember { mutableStateOf(prefs.getString("savedLinks", "")!!.lines().filter { it.isNotBlank() }) }
+                var linkInput by remember { mutableStateOf(if (intent?.action == Intent.ACTION_SEND) (intent.getStringExtra(Intent.EXTRA_TEXT) ?: "") else "") }
+                var linkError by remember { mutableStateOf("") }
                 var channels by remember { mutableStateOf(prefs.getString("channels", "")!!.split("\n").filter { it.isNotBlank() }) }
                 var quality by remember { mutableStateOf(prefs.getString("quality", "Лучшее доступное") ?: "Лучшее доступное") }
                 var autoCheck by remember { mutableStateOf(prefs.getBoolean("autoCheck", false)) }
@@ -116,7 +119,7 @@ class MainActivity : ComponentActivity() {
                                 item {
                                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                         Metric("Каналы", channels.size.toString(), Modifier.weight(1f))
-                                        Metric("Загрузки", "0", Modifier.weight(1f))
+                                        Metric("Ссылки", savedLinks.size.toString(), Modifier.weight(1f))
                                     }
                                 }
                                 item { SectionTitle("Быстрые действия") }
@@ -170,8 +173,40 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
-                            2 -> Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                                EmptyPanel("↓", "Загрузок пока нет", "Скачивание MP4/MP3 будет добавлено на следующем этапе. Этот экран станет очередью с прогрессом, паузой и историей.")
+                            2 -> LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(18.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                item { Text("Список видео", style = MaterialTheme.typography.titleLarge) }
+                                item { Text("Ссылки для последующей загрузки. Видео пока не скачиваются.", color = Muted) }
+                                item { OutlinedTextField(value = linkInput, onValueChange = { linkInput = it; linkError = "" }, label = { Text("Ссылка YouTube") }, modifier = Modifier.fillMaxWidth()) }
+                                if (linkError.isNotEmpty()) item { Text(linkError, color = Color(0xFFFF9999)) }
+                                item { Button(onClick = {
+                                    val link = linkInput.trim().split(" ").firstOrNull { it.contains("youtu.be/") || it.contains("youtube.com/") }?.trim()
+                                    if (link == null || !link.startsWith("https://")) linkError = "Укажи HTTPS-ссылку YouTube"
+                                    else if (link in savedLinks) linkError = "Ссылка уже добавлена"
+                                    else {
+                                        savedLinks = listOf(link) + savedLinks
+                                        prefs.edit().putString("savedLinks", savedLinks.joinToString("\n")).apply()
+                                        linkInput = ""
+                                    }
+                                }, modifier = Modifier.fillMaxWidth()) { Text("Добавить в список") } }
+                                if (savedLinks.isEmpty()) item { EmptyPanel("↓", "Пока пусто", "Поделись ссылкой из YouTube или вставь её здесь.") }
+                                items(savedLinks) { link ->
+                                    Surface(color = Panel, shape = Shape) {
+                                        Column(Modifier.padding(16.dp)) {
+                                            Text(link, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                            Row {
+                                                TextButton(onClick = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link))) }) { Text("Открыть") }
+                                                TextButton(onClick = {
+                                                    savedLinks = savedLinks - link
+                                                    prefs.edit().putString("savedLinks", savedLinks.joinToString("\n")).apply()
+                                                }) { Text("Удалить") }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             3 -> {
                                 val cleaned = remember(description) { cleanDescription(description) }
