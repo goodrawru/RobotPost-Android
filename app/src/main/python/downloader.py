@@ -57,10 +57,25 @@ def inspect_video(url):
     if not info:
         raise RuntimeError("Не удалось получить сведения о видео")
     choices = _available(info)
+    raw_formats = info.get("formats") or []
+    diagnostics = []
+    for fmt in raw_formats:
+        height = fmt.get("height") or 0
+        if height and height <= 720:
+            diagnostics.append({
+                "id": str(fmt.get("format_id") or "?"),
+                "height": height,
+                "ext": str(fmt.get("ext") or "?"),
+                "video": str(fmt.get("vcodec") or "none"),
+                "audio": str(fmt.get("acodec") or "none"),
+                "url": bool(fmt.get("url")),
+            })
+    diagnostics.sort(key=lambda item: item["height"], reverse=True)
     return json.dumps({
         "title": info.get("title") or "Видео",
         "channel": info.get("channel") or info.get("uploader") or "YouTube",
         "formats": choices,
+        "diagnostics": diagnostics[:40],
     }, ensure_ascii=False)
 
 def _get_file(info, ydl):
