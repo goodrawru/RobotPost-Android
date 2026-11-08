@@ -180,6 +180,10 @@ class MainActivity : ComponentActivity() {
                 }
 
                 var clearHistoryConfirm by remember { mutableStateOf(false) }
+                var editDescriptionUri by remember { mutableStateOf<Uri?>(null) }
+                var editDescriptionText by remember { mutableStateOf("") }
+                var editDescriptionError by remember { mutableStateOf("") }
+                var editDescriptionSaving by remember { mutableStateOf(false) }
                 var downloadStatus by remember { mutableStateOf("") }
                 var inspectStatus by remember { mutableStateOf("") }
                 var formatChoices by remember { mutableStateOf(listOf<Pair<String, String>>()) }
@@ -960,6 +964,22 @@ class MainActivity : ComponentActivity() {
                                                     try {
                                                         val root = prefs.getString("archiveRoot", "").orEmpty()
                                                         require(root.isNotBlank()) { "Сначала выбери папку архива" }
+                                                        val uri = ArchiveBrowser.files(this@MainActivity, Uri.parse(root), entry.optString("name"))["description.txt"]
+                                                            ?: error("Описание не найдено")
+                                                        val text = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                                                            ?: error("Не удалось прочитать описание")
+                                                        editDescriptionUri = uri
+                                                        editDescriptionText = text
+                                                        editDescriptionError = ""
+                                                    } catch (e: Exception) {
+                                                        android.widget.Toast.makeText(this@MainActivity,
+                                                            DownloadEngine.readableError(e), android.widget.Toast.LENGTH_LONG).show()
+                                                    }
+                                                }) { Text("Редактировать описание") }
+                                                TextButton(onClick = {
+                                                    try {
+                                                        val root = prefs.getString("archiveRoot", "").orEmpty()
+                                                        require(root.isNotBlank()) { "Сначала выбери папку архива" }
                                                         val files = ArchiveBrowser.files(this@MainActivity, Uri.parse(root), entry.optString("name"))
                                                         val uris = listOf("video.mp4", "audio.m4a", "audio.mp3", "description.txt")
                                                             .mapNotNull { files[it] }
@@ -993,6 +1013,48 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }
                                         }
+                                    }
+                                    if (editDescriptionUri != null) item {
+                                        AlertDialog(
+                                            onDismissRequest = { if (!editDescriptionSaving) editDescriptionUri = null },
+                                            title = { Text("Редактирование описания") },
+                                            text = {
+                                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    OutlinedTextField(
+                                                        value = editDescriptionText,
+                                                        onValueChange = { editDescriptionText = it },
+                                                        label = { Text("description.txt") },
+                                                        modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp, max = 350.dp),
+                                                        minLines = 6
+                                                    )
+                                                    if (editDescriptionError.isNotBlank()) Text(editDescriptionError, color = MaterialTheme.colorScheme.error)
+                                                }
+                                            },
+                                            confirmButton = {
+                                                TextButton(enabled = !editDescriptionSaving, onClick = {
+                                                    val uri = editDescriptionUri ?: return@TextButton
+                                                    editDescriptionSaving = true
+                                                    val updated = editDescriptionText
+                                                    downloadScope.launch {
+                                                        try {
+                                                            withContext(Dispatchers.IO) {
+                                                                contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use { it.write(updated) }
+                                                                    ?: error("Нет доступа к записи файла")
+                                                            }
+                                                            editDescriptionUri = null
+                                                            editDescriptionError = ""
+                                                        } catch (e: Exception) {
+                                                            editDescriptionError = DownloadEngine.readableError(e)
+                                                        } finally {
+                                                            editDescriptionSaving = false
+                                                        }
+                                                    }
+                                                }) { Text(if (editDescriptionSaving) "Сохраняю..." else "Сохранить") }
+                                            },
+                                            dismissButton = {
+                                                TextButton(enabled = !editDescriptionSaving, onClick = { editDescriptionUri = null }) { Text("Отмена") }
+                                            }
+                                        )
                                     }
                                     if (clearHistoryConfirm) item {
                                         AlertDialog(
