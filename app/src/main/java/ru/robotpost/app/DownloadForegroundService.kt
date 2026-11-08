@@ -148,9 +148,11 @@ class DownloadForegroundService : Service() {
                     val failedLinks = prefs.getString("failedQueue", "").orEmpty().lines().filter { it.isNotBlank() }
                     val reasons = runCatching { JSONObject(prefs.getString("failureReasons", "{}")) }.getOrDefault(JSONObject())
                     reasons.put(url, DownloadEngine.readableError(e))
-                    prefs.edit()
+                    check(prefs.edit()
                         .putString("failedQueue", (failedLinks + url).distinct().joinToString("\n"))
-                        .putString("failureReasons", reasons.toString()).commit()
+                        .putString("failureReasons", reasons.toString()).commit()) {
+                        "Не удалось сохранить ошибку загрузки; ссылка останется в очереди"
+                    }
                 } finally {
                     activeTemp = null
                 }
@@ -160,7 +162,9 @@ class DownloadForegroundService : Service() {
                 val current = prefs.getString("pendingQueue", "").orEmpty()
                     .lines().filter { it.isNotBlank() }.toMutableList()
                 current.remove(url)
-                prefs.edit().putString("pendingQueue", current.joinToString("\n")).commit()
+                check(prefs.edit().putString("pendingQueue", current.joinToString("\n")).commit()) {
+                    "Не удалось сохранить обновлённую очередь"
+                }
             }
         } finally {
             val message = if (stopping) "Остановлено · готово: $completed · ошибок: $failed"
