@@ -157,6 +157,7 @@ class MainActivity : ComponentActivity() {
                 var showPlaylistPreview by remember { mutableStateOf(false) }
                 var queueQuality by remember { mutableStateOf(prefs.getString("queueQuality", "720") ?: "720") }
                 var includeDescription by remember { mutableStateOf(prefs.getBoolean("includeDescription", true)) }
+                var queueVideoOnly by remember { mutableStateOf(prefs.getBoolean("queueVideoOnly", false)) }
                 var expandedArchive by remember { mutableStateOf(setOf<String>()) }
                 var linkInput by remember { mutableStateOf(if (intent?.action == Intent.ACTION_SEND) (intent.getStringExtra(Intent.EXTRA_TEXT) ?: "") else "") }
                 var linkError by remember { mutableStateOf("") }
@@ -716,6 +717,13 @@ class MainActivity : ComponentActivity() {
                                             }
                                             Text(if (includeDescription) "Видео + аудио + описание" else "Только медиа: видео со звуком, без TXT",
                                                 color = Muted, style = MaterialTheme.typography.bodySmall)
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Checkbox(checked = queueVideoOnly, enabled = !queueRunning && queueQuality != "audio", onCheckedChange = {
+                                                    queueVideoOnly = it
+                                                    prefs.edit().putBoolean("queueVideoOnly", it).apply()
+                                                })
+                                                Text("Только MP4 со звуком (без отдельного аудио и TXT)")
+                                            }
                                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                                 listOf("720", "480", "360", "audio").forEach { quality ->
                                                     OutlinedButton(
