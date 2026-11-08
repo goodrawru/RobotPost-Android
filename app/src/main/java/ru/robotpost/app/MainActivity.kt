@@ -6,6 +6,8 @@ import android.content.Intent
 import android.net.Uri
 import android.content.ContentResolver
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import org.json.JSONObject
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -125,7 +127,38 @@ class MainActivity : ComponentActivity() {
                 var linkError by remember { mutableStateOf("") }
                 var downloadBusy by remember { mutableStateOf(false) }
                 var downloadStatus by remember { mutableStateOf("") }
+                var inspectStatus by remember { mutableStateOf("") }
+                var formatChoices by remember { mutableStateOf(listOf<Pair<String, String>>()) }
+                var selectedFormat by remember { mutableStateOf("") }
+                var inspectedTitle by remember { mutableStateOf("") }
+                var inspecting by remember { mutableStateOf(false) }
                 val downloadScope = rememberCoroutineScope()
+                LaunchedEffect(linkInput) {
+                    formatChoices = emptyList()
+                    selectedFormat = ""
+                    inspectedTitle = ""
+                    inspectStatus = ""
+                    if (!linkInput.trim().startsWith("https://")) return@LaunchedEffect
+                    delay(700)
+                    inspecting = true
+                    inspectStatus = "Проверка..."
+                    try {
+                        val info = withContext(Dispatchers.IO) { DownloadEngine.inspect(this@MainActivity, linkInput.trim()) }
+                        inspectedTitle = info.optString("title")
+                        val formats = info.optJSONArray("formats")
+                        formatChoices = if (formats == null) emptyList() else (0 until formats.length()).map { i ->
+                            val fmt = formats.getJSONObject(i)
+                            fmt.getString("id") to fmt.getString("label")
+                        }
+                        selectedFormat = formatChoices.firstOrNull()?.first.orEmpty()
+                        inspectStatus = if (formatChoices.isEmpty()) {
+                            "MP4 со звуком не найден. Для раздельных потоков потребуется объединение видео и аудио."
+                        } else "Найдено форматов: " + formatChoices.size
+                    } catch (e: Exception) {
+                        inspectStatus = "Ошибка поиска: " + (e.localizedMessage ?: "Нет доступа к видео")
+                    } finally { inspecting = false }
+                }
+
                 var linkSearch by remember { mutableStateOf("") }
                 var newestFirst by remember { mutableStateOf(true) }
                 var confirmClear by remember { mutableStateOf(false) }
@@ -283,24 +316,37 @@ class MainActivity : ComponentActivity() {
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 item { Text("Список видео", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                                item { Text("Вставь ссылку: приложение проверит доступные форматы MP4 со звуком.", color = Muted) }
+                                item { OutlinedTextField(value = linkInput, onValueChange = { linkInput = it; linkError = "" }, label = { Text("Ссылка YouTube") }, modifier = Modifier.fillMaxWidth()) }
                                 item {
                                     Surface(color = Panel, shape = Shape) {
                                         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                            Text("Скачать MP4", fontWeight = FontWeight.Bold)
-                                            Text("Загрузка ролика со звуком в локальный архив.", color = Muted)
+                                            Text("Доступные форматы", fontWeight = FontWeight.Bold)
+                                            if (inspecting) {
+                                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                                Text("Ищу форматы YouTube...", color = Muted)
+                                            } else if (inspectStatus.isNotBlank()) Text(inspectStatus, color = Muted)
+                                            if (inspectedTitle.isNotBlank()) Text(inspectedTitle, fontWeight = FontWeight.SemiBold)
+                                            formatChoices.forEach { choice ->
+                                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { selectedFormat = choice.first }) {
+                                                    RadioButton(selected = selectedFormat == choice.first, onClick = { selectedFormat = choice.first })
+                                                    Text(choice.second, modifier = Modifier.weight(1f))
+                                                }
+                                            }
                                             OutlinedButton(onClick = { chooseRoot.launch(null) }, modifier = Modifier.fillMaxWidth()) {
                                                 Text(if (chosenRoot.isBlank()) "Выбрать папку архива" else "Изменить папку архива")
                                             }
                                             Button(
-                                                enabled = !downloadBusy && chosenRoot.isNotBlank() && linkInput.isNotBlank(),
+                                                enabled = !downloadBusy && chosenRoot.isNotBlank() && selectedFormat.isNotBlank() && !inspecting,
                                                 onClick = {
                                                     downloadBusy = true
                                                     downloadStatus = "Скачивание... Оставь приложение открытым."
                                                     val url = linkInput.trim()
+                                                    val format = selectedFormat
                                                     downloadScope.launch {
                                                         downloadStatus = try {
                                                             val result = withContext(Dispatchers.IO) {
-                                                                DownloadEngine.download(this@MainActivity, url, Uri.parse(chosenRoot))
+                                                                DownloadEngine.download(this@MainActivity, url, Uri.parse(chosenRoot), format)
                                                             }
                                                             "Сохранено: " + result
                                                         } catch (e: Exception) {
@@ -310,13 +356,12 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 },
                                                 modifier = Modifier.fillMaxWidth()
-                                            ) { Text(if (downloadBusy) "Скачивается..." else "Скачать видео") }
-                                            if (downloadStatus.isNotBlank()) Text(downloadStatus, color = Mint)
+                                            ) { Text(if (downloadBusy) "Скачивается..." else "Скачать выбранный формат") }
+                                            if (downloadStatus.isNotBlank()) Text(downloadStatus, color = if (downloadStatus.startsWith("Ошибка")) Color(0xFFFF9999) else Mint)
                                         }
                                     }
                                 }
-                                item { Text("Ссылки для последующей загрузки. Видео пока не скачиваются.", color = Muted) }
-                                item { OutlinedTextField(value = linkInput, onValueChange = { linkInput = it; linkError = "" }, label = { Text("Ссылка YouTube") }, modifier = Modifier.fillMaxWidth()) }
+
                                 if (linkError.isNotEmpty()) item { Text(linkError, color = Color(0xFFFF9999)) }
                                 item { OutlinedTextField(value = linkSearch, onValueChange = { linkSearch = it }, label = { Text("Поиск по ссылкам") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
                                 item {
