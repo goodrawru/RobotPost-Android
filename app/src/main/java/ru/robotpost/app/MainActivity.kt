@@ -151,6 +151,20 @@ class MainActivity : ComponentActivity() {
                         val info = withContext(Dispatchers.IO) { DownloadEngine.inspect(this@MainActivity, linkInput.trim()) }
                         inspectedTitle = info.optString("title")
                         diagnostics = buildString {
+                            append("yt-dlp ").append(info.optString("yt_dlp_version")).append("\n")
+                            val reports = info.optJSONArray("reports")
+                            if (reports != null) for (i in 0 until reports.length()) {
+                                val report = reports.getJSONObject(i)
+                                append("Профиль: ").append(report.optString("profile"))
+                                append(" · потоков: ").append(report.optInt("formats"))
+                                append(" · максимум: ").append(report.optInt("max_video")).append("p\n")
+                                if (report.has("error")) append("Ошибка: ").append(report.optString("error")).append("\n")
+                                val warnings = report.optJSONArray("warnings")
+                                if (warnings != null) for (j in 0 until warnings.length()) {
+                                    append("Предупреждение: ").append(warnings.optString(j)).append("\n")
+                                }
+                            }
+                            append("\n")
                             val data = info.optJSONArray("diagnostics")
                             if (data != null) for (i in 0 until data.length()) {
                                 val item = data.getJSONObject(i)
