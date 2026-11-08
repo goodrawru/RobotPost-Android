@@ -198,6 +198,13 @@ class MainActivity : ComponentActivity() {
                                                             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                                             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("YouTube channel", channel))
                                                         }) { Text("Копировать") }
+                                                        TextButton(onClick = {
+                                                            val share = Intent(Intent.ACTION_SEND).apply {
+                                                                type = "text/plain"
+                                                                putExtra(Intent.EXTRA_TEXT, channel)
+                                                            }
+                                                            startActivity(Intent.createChooser(share, "Поделиться каналом"))
+                                                        }) { Text("Поделиться") }
                                                         TextButton(onClick = { channelToDelete = channel }) { Text("Удалить") }
                                                     }
                                                 }
