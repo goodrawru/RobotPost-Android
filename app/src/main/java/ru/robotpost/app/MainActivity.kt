@@ -133,12 +133,15 @@ class MainActivity : ComponentActivity() {
                 var formatChoices by remember { mutableStateOf(listOf<Pair<String, String>>()) }
                 var selectedFormat by remember { mutableStateOf("") }
                 var inspectedTitle by remember { mutableStateOf("") }
+                var diagnostics by remember { mutableStateOf("") }
+                var showDiagnostics by remember { mutableStateOf(false) }
                 var inspecting by remember { mutableStateOf(false) }
                 val downloadScope = rememberCoroutineScope()
                 LaunchedEffect(linkInput) {
                     formatChoices = emptyList()
                     selectedFormat = ""
                     inspectedTitle = ""
+                    diagnostics = ""
                     inspectStatus = ""
                     if (!linkInput.trim().startsWith("https://")) return@LaunchedEffect
                     delay(700)
@@ -147,6 +150,19 @@ class MainActivity : ComponentActivity() {
                     try {
                         val info = withContext(Dispatchers.IO) { DownloadEngine.inspect(this@MainActivity, linkInput.trim()) }
                         inspectedTitle = info.optString("title")
+                        diagnostics = buildString {
+                            val data = info.optJSONArray("diagnostics")
+                            if (data != null) for (i in 0 until data.length()) {
+                                val item = data.getJSONObject(i)
+                                append(item.optString("id")).append(" · ")
+                                append(item.optInt("height")).append("p · ")
+                                append(item.optString("ext")).append(" · ")
+                                append(item.optString("video")).append(" / ")
+                                append(item.optString("audio"))
+                                if (!item.optBoolean("url")) append(" · без URL")
+                                append("\n")
+                            }
+                        }
                         val formats = info.optJSONArray("formats")
                         formatChoices = if (formats == null) emptyList() else (0 until formats.length()).map { i ->
                             val fmt = formats.getJSONObject(i)
@@ -380,6 +396,18 @@ class MainActivity : ComponentActivity() {
                                                 Text("Ищу форматы YouTube...", color = Muted)
                                             } else if (inspectStatus.isNotBlank()) Text(inspectStatus, color = Muted)
                                             if (inspectedTitle.isNotBlank()) Text(inspectedTitle, fontWeight = FontWeight.SemiBold)
+                                            if (diagnostics.isNotBlank()) {
+                                                TextButton(onClick = { showDiagnostics = !showDiagnostics }) {
+                                                    Text(if (showDiagnostics) "Скрыть диагностику форматов" else "Показать диагностику форматов")
+                                                }
+                                                if (showDiagnostics) {
+                                                    Text(diagnostics, color = Muted, style = MaterialTheme.typography.bodySmall)
+                                                    OutlinedButton(onClick = {
+                                                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("RobotPost formats", diagnostics))
+                                                    }) { Text("Копировать диагностику") }
+                                                }
+                                            }
                                             formatChoices.forEach { choice ->
                                                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { selectedFormat = choice.first }) {
                                                     RadioButton(selected = selectedFormat == choice.first, onClick = { selectedFormat = choice.first })
