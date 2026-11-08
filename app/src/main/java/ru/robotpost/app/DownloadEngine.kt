@@ -29,10 +29,13 @@ object DownloadEngine {
             val videoPath = info.optString("video")
             val audioPath = info.optString("audio")
             var video = videoPath.takeIf { it.isNotBlank() }?.let(::File)
-            val audio = audioPath.takeIf { it.isNotBlank() }?.let(::File)
+            var audio = audioPath.takeIf { it.isNotBlank() }?.let(::File)
             if (info.optBoolean("merge")) {
                 require(video != null && audio != null) { "Не хватает потоков для объединения" }
                 video = Mp4Muxer.combine(video, audio, File(temp, "merged.mp4"))
+            }
+            if (video != null && audio == null) {
+                audio = AudioExtractor.extract(video, File(temp, "audio.m4a"))
             }
             val stamp = info.optString("date")
             val date = if (Regex("[0-9]{8}").matches(stamp))
