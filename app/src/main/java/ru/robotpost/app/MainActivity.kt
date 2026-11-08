@@ -126,6 +126,7 @@ class MainActivity : ComponentActivity() {
                 var linkInput by remember { mutableStateOf(if (intent?.action == Intent.ACTION_SEND) (intent.getStringExtra(Intent.EXTRA_TEXT) ?: "") else "") }
                 var linkError by remember { mutableStateOf("") }
                 var downloadBusy by remember { mutableStateOf(false) }
+                var activeDownloadDirectory by remember { mutableStateOf<java.io.File?>(null) }
                 var history by remember { mutableStateOf(DownloadHistory.list(this@MainActivity)) }
                 var clearHistoryConfirm by remember { mutableStateOf(false) }
                 var downloadStatus by remember { mutableStateOf("") }
@@ -470,13 +471,16 @@ class MainActivity : ComponentActivity() {
                                                 enabled = !downloadBusy && chosenRoot.isNotBlank() && selectedFormat.isNotBlank() && !inspecting,
                                                 onClick = {
                                                     downloadBusy = true
-                                                    downloadStatus = "Скачивание... Оставь приложение открытым."
+                                                    downloadStatus = "Подготовка скачивания... Оставь приложение открытым."
                                                     val url = linkInput.trim()
                                                     val format = selectedFormat
                                                     downloadScope.launch {
                                                         downloadStatus = try {
                                                             val result = withContext(Dispatchers.IO) {
-                                                                DownloadEngine.download(this@MainActivity, url, Uri.parse(chosenRoot), format)
+                                                                DownloadEngine.download(this@MainActivity, url, Uri.parse(chosenRoot), format,
+                                                                    onTemp = { activeDownloadDirectory = it },
+                                                                    onProgress = { progress -> runOnUiThread { downloadStatus = progress } }
+                                                                )
                                                             }
                                                             DownloadHistory.add(this@MainActivity, result, url)
                                                             history = DownloadHistory.list(this@MainActivity)
@@ -485,10 +489,21 @@ class MainActivity : ComponentActivity() {
                                                             "Ошибка: " + (e.localizedMessage ?: "Не удалось скачать видео")
                                                         }
                                                         downloadBusy = false
+                                                        activeDownloadDirectory = null
                                                     }
                                                 },
                                                 modifier = Modifier.fillMaxWidth()
                                             ) { Text(if (downloadBusy) "Скачивается..." else "Скачать выбранный формат") }
+                                            if (downloadBusy) {
+                                                OutlinedButton(onClick = {
+                                                    activeDownloadDirectory?.let { directory ->
+                                                        java.io.File(directory, "cancel.flag").writeText("cancel")
+                                                        downloadStatus = "Отмена загрузки..."
+                                                    }
+                                                }, enabled = activeDownloadDirectory != null, modifier = Modifier.fillMaxWidth()) {
+                                                    Text("Отменить загрузку")
+                                                }
+                                            }
                                             if (downloadStatus.isNotBlank()) Text(downloadStatus, color = if (downloadStatus.startsWith("Ошибка")) Color(0xFFFF9999) else Mint)
                                         }
                                     }
