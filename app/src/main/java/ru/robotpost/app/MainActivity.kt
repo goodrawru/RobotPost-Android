@@ -931,9 +931,18 @@ class MainActivity : ComponentActivity() {
                                                 Text(entry.optString("source", ""), color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                                 Text(java.text.SimpleDateFormat("dd.MM.yy HH:mm", Locale.ROOT).format(Date(entry.optLong("savedAt"))), color = Mint, style = MaterialTheme.typography.bodySmall)
                                                 if (entry.optString("source").startsWith("https://")) {
-                                                    TextButton(onClick = {
-                                                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(entry.optString("source"))))
-                                                    }) { Text("Открыть оригинал") }
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                        TextButton(onClick = {
+                                                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(entry.optString("source"))))
+                                                        }) { Text("Открыть оригинал") }
+                                                        TextButton(onClick = {
+                                                            val share = Intent(Intent.ACTION_SEND).apply {
+                                                                type = "text/plain"
+                                                                putExtra(Intent.EXTRA_TEXT, entry.optString("source"))
+                                                            }
+                                                            startActivity(Intent.createChooser(share, "Поделиться ссылкой"))
+                                                        }) { Text("Поделиться") }
+                                                    }
                                                 }
                                             }
                                         }
