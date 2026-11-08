@@ -51,7 +51,7 @@ object DownloadEngine {
     fun inspect(context: Context, url: String): JSONObject =
         JSONObject(python(context).getModule("downloader").callAttr("inspect_video", url).toString())
 
-    fun download(context: Context, url: String, root: Uri, formatId: String, onTemp: (File) -> Unit = {}, onProgress: (String) -> Unit = {}): String {
+    fun download(context: Context, url: String, root: Uri, formatId: String, onTemp: (File) -> Unit = {}, onProgress: (String) -> Unit = {}, includeDescription: Boolean = true): String {
         val temp = File(context.cacheDir, "robotpost_" + UUID.randomUUID().toString()).apply { mkdirs() }
         onTemp(temp)
         try {
@@ -101,7 +101,8 @@ object DownloadEngine {
                 date, cleanDescription(info.optString("description", "")),
                 video?.let { Uri.fromFile(it) },
                 audio?.let { Uri.fromFile(it) },
-                "audio.m4a"
+                "audio.m4a",
+                includeDescription
             )
         } finally {
             temp.listFiles()?.forEach { it.delete() }
