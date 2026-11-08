@@ -94,7 +94,12 @@ class DownloadForegroundService : Service() {
                 val url = pending.first()
                 try {
                     status("Проверяю: " + url)
-                    val quality = prefs.getString("queueQuality", "720") ?: "720"
+                    val playlistMode = prefs.getBoolean("playlistVideoOnly", false)
+                    val playlistMeta = runCatching {
+                        JSONObject(prefs.getString("playlistVideoMap", "{}") ?: "{}").optJSONObject(url)
+                    }.getOrNull()
+                    val quality = if (playlistMode && prefs.getString("queueQuality", "720") == "audio")
+                        "720" else prefs.getString("queueQuality", "720") ?: "720"
                     val root = prefs.getString("archiveRoot", "").orEmpty()
                     require(root.isNotBlank()) { "Не выбрана папка архива" }
                     val info = withContext(Dispatchers.IO) { DownloadEngine.inspect(this@DownloadForegroundService, url) }
@@ -111,7 +116,9 @@ class DownloadForegroundService : Service() {
                             onTemp = { activeTemp = it },
                             onProgress = { progress -> status(progress) },
                             includeDescription = prefs.getBoolean("includeDescription", true),
-                            videoOnly = prefs.getBoolean("queueVideoOnly", false) && quality != "audio")
+                            videoOnly = playlistMode && playlistMeta == null,
+                            playlistName = if (playlistMode) playlistMeta?.optString("title").orEmpty() else "",
+                            playlistIndex = if (playlistMode) playlistMeta?.optInt("index", 0) ?: 0 else 0)
                     }
                     DownloadHistory.add(this@DownloadForegroundService, saved, url)
                     completed++
