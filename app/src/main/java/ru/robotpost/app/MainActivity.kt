@@ -509,7 +509,7 @@ class MainActivity : ComponentActivity() {
                                                 if (showFormatPicker) {
                                                     AlertDialog(
                                                         onDismissRequest = { showFormatPicker = false },
-                                                        title = { Text("Выбери формат (до 720p)") },
+                                                        title = { Text("Выбери доступный формат") },
                                                         text = {
                                                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                                                 formatChoices.forEach { choice ->
@@ -731,7 +731,7 @@ class MainActivity : ComponentActivity() {
                                                     Text(if (queueDetailsExpanded) "Скрыть список ▲" else "Показать список ▼")
                                                 }
                                             }
-                                            Text("Единое качество для всех роликов очереди (максимум 720p). При ошибке ролик пропускается и сохраняется для повторной попытки.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                            Text("Для очереди выбирается максимальное качество из настроек. Для одиночного видео доступны все совместимые форматы. Ошибочные загрузки сохраняются для повторной попытки.", color = Muted, style = MaterialTheme.typography.bodySmall)
                                             Text("Режим сохранения", fontWeight = FontWeight.SemiBold)
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 RadioButton(selected = !playlistVideoOnly, onClick = {
