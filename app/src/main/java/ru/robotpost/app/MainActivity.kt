@@ -956,6 +956,27 @@ class MainActivity : ComponentActivity() {
                                                         }) { Text(label) }
                                                     }
                                                 }
+                                                TextButton(onClick = {
+                                                    try {
+                                                        val root = prefs.getString("archiveRoot", "").orEmpty()
+                                                        require(root.isNotBlank()) { "Сначала выбери папку архива" }
+                                                        val files = ArchiveBrowser.files(this@MainActivity, Uri.parse(root), entry.optString("name"))
+                                                        val uris = listOf("video.mp4", "audio.m4a", "audio.mp3", "description.txt")
+                                                            .mapNotNull { files[it] }
+                                                        require(uris.isNotEmpty()) { "Файлы комплекта не найдены" }
+                                                        val share = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                                                            type = "*/*"
+                                                            putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+                                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                            clipData = android.content.ClipData.newUri(contentResolver, "RobotPost", uris.first())
+                                                            uris.drop(1).forEach { clipData?.addItem(android.content.ClipData.Item(it)) }
+                                                        }
+                                                        startActivity(Intent.createChooser(share, "Поделиться файлами"))
+                                                    } catch (e: Exception) {
+                                                        android.widget.Toast.makeText(this@MainActivity,
+                                                            DownloadEngine.readableError(e), android.widget.Toast.LENGTH_LONG).show()
+                                                    }
+                                                }) { Text("Поделиться файлами комплекта") }
                                                 if (entry.optString("source").startsWith("https://")) {
                                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                                         TextButton(onClick = {
