@@ -34,7 +34,6 @@ def _available(info):
     combined = [f for f in formats if f.get("ext") == "mp4"
                 and f.get("vcodec") not in (None, "none")
                 and f.get("acodec") not in (None, "none")]
-    # Android MediaMuxer can combine AVC/H.264 and AAC without transcoding.
     video = [f for f in formats if f.get("ext") == "mp4"
              and str(f.get("vcodec") or "").startswith(("avc1", "h264"))
              and f.get("acodec") == "none"]
@@ -42,23 +41,33 @@ def _available(info):
              and str(f.get("acodec") or "").startswith(("mp4a", "aac"))
              and f.get("vcodec") == "none"]
     best_audio = max(audio, key=lambda f: f.get("abr") or f.get("tbr") or 0, default=None)
-    choices = []
+    # One best format per resolution. Prefer MP4 with sound, otherwise AVC+AAC.
+    # Keep the exact format IDs for downloads; only simplify the visible list.
+    by_height = {}
     for f in combined:
         height = f.get("height") or 0
         if 0 < height <= 720:
-            choices.append({"id": "single:" + str(f["format_id"]),
-                            "label": str(height) + "p · MP4 со звуком",
-                            "height": height, "kind": "single"})
+            score = (1, f.get("tbr") or 0)
+            item = {"id": "single:" + str(f["format_id"]),
+                    "label": str(height) + "p · MP4 со звуком",
+                    "height": height, "kind": "single"}
+            if height not in by_height or score > by_height[height][0]:
+                by_height[height] = (score, item)
     if best_audio:
         for f in video:
             height = f.get("height") or 0
             if 0 < height <= 720:
-                choices.append({"id": "merge:" + str(f["format_id"]) + "+" + str(best_audio["format_id"]),
-                                "label": str(height) + "p · MP4 + AAC",
-                                "height": height, "kind": "merge"})
+                score = (0, f.get("tbr") or 0)
+                item = {"id": "merge:" + str(f["format_id"]) + "+" + str(best_audio["format_id"]),
+                        "label": str(height) + "p · MP4 + AAC",
+                        "height": height, "kind": "merge"}
+                if height not in by_height or score > by_height[height][0]:
+                    by_height[height] = (score, item)
+    choices = [entry[1] for entry in by_height.values()]
+    choices.sort(key=lambda item: item["height"], reverse=True)
+    if best_audio:
         choices.append({"id": "audio:" + str(best_audio["format_id"]),
                         "label": "Только аудио · M4A", "height": -1, "kind": "audio"})
-    choices.sort(key=lambda c: (c["height"], c["kind"] == "single"), reverse=True)
     return choices
 
 class _DiagnosticLogger:
