@@ -717,6 +717,19 @@ class MainActivity : ComponentActivity() {
                                                     ) { Text(if (quality == "audio") "M4A" else quality + "p") }
                                                 }
                                             }
+                                            if (chosenRoot.isBlank()) {
+                                                Text("Для скачивания очереди сначала выбери папку архива.", color = Color(0xFFFFC48A))
+                                                OutlinedButton(
+                                                    onClick = { chooseRoot.launch(null) },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) { Text("Выбрать папку архива") }
+                                            } else {
+                                                Text("Папка архива выбрана · очередь готова к сохранению", color = Mint,
+                                                    style = MaterialTheme.typography.bodySmall)
+                                            }
+                                            if (downloadBusy && !queueRunning) {
+                                                Text("Дождись завершения текущей загрузки.", color = Muted)
+                                            }
                                             Button(
                                                 enabled = pendingQueue.isNotEmpty() && chosenRoot.isNotBlank() && !downloadBusy && !queueRunning,
                                                 modifier = Modifier.fillMaxWidth(),
