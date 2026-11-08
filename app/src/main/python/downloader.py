@@ -1,5 +1,6 @@
 import json
 import os
+import yt_dlp
 from urllib.parse import urlparse
 from yt_dlp import YoutubeDL
 
@@ -51,26 +52,47 @@ def _available(info):
     choices.sort(key=lambda c: (c["height"], c["kind"] == "single"), reverse=True)
     return choices
 
+class _DiagnosticLogger:
+    def __init__(self, warnings):
+        self.warnings = warnings
+    def debug(self, message):
+        pass
+    def warning(self, message):
+        if len(self.warnings) < 8:
+            self.warnings.append(str(message)[:300])
+    def error(self, message):
+        self.warning(message)
+
+
 def _inspect_best(url):
     best_info, best_choices, best_profile = None, [], "legacy"
     failures = []
+    reports = []
     for profile in ("legacy", "alternate", "tv"):
         try:
-            with YoutubeDL(_options(profile)) as ydl:
+            warnings = []
+            opts = _options(profile)
+            opts["logger"] = _DiagnosticLogger(warnings)
+            with YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=False)
             choices = _available(info)
+            reports.append({"profile": profile, "formats": len(info.get("formats") or []),
+                            "max_video": max((fmt.get("height") or 0 for fmt in info.get("formats") or []
+                                          if fmt.get("vcodec") not in (None, "none")), default=0),
+                            "warnings": warnings[:8]})
             if best_info is None or max((x["height"] for x in choices), default=0) > max((x["height"] for x in best_choices), default=0):
                 best_info, best_choices, best_profile = info, choices, profile
             if max((x["height"] for x in best_choices), default=0) >= 720:
                 break
         except Exception as exc:
             failures.append(str(exc)[:180])
+            reports.append({"profile": profile, "error": str(exc)[:240]})
     if best_info is None:
         raise RuntimeError("Не удалось получить форматы: " + "; ".join(failures))
-    return best_info, best_choices, best_profile
+    return best_info, best_choices, best_profile, reports
 
 def inspect_video(url):
-    info, choices, profile = _inspect_best(_check_url(url))
+    info, choices, profile, reports = _inspect_best(_check_url(url))
     for choice in choices:
         choice["id"] = profile + "|" + choice["id"]
     raw_formats = info.get("formats") or []
@@ -92,6 +114,8 @@ def inspect_video(url):
         "channel": info.get("channel") or info.get("uploader") or "YouTube",
         "formats": choices,
         "profile": profile,
+        "yt_dlp_version": yt_dlp.version.__version__,
+        "reports": reports,
         "diagnostics": diagnostics[:40],
     }, ensure_ascii=False)
 
