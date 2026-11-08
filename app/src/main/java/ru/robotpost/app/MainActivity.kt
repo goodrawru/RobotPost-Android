@@ -123,6 +123,7 @@ class MainActivity : ComponentActivity() {
                 var page by remember { mutableIntStateOf(if (intent?.action == Intent.ACTION_SEND) 2 else prefs.getInt("lastPage", 0).coerceIn(0, 4)) }
                 LaunchedEffect(page) { prefs.edit().putInt("lastPage", page).apply() }
                 var savedLinks by remember { mutableStateOf(prefs.getString("savedLinks", "")!!.lines().filter { it.isNotBlank() }) }
+                var pendingQueue by remember { mutableStateOf(prefs.getString("pendingQueue", "")!!.lines().filter { it.isNotBlank() }) }
                 var linkInput by remember { mutableStateOf(if (intent?.action == Intent.ACTION_SEND) (intent.getStringExtra(Intent.EXTRA_TEXT) ?: "") else "") }
                 var linkError by remember { mutableStateOf("") }
                 var downloadBusy by remember { mutableStateOf(false) }
@@ -540,11 +541,41 @@ class MainActivity : ComponentActivity() {
                                         linkInput = ""
                                     }
                                 }, modifier = Modifier.fillMaxWidth()) { Text("Добавить в список") } }
+                                item {
+                                    Surface(color = Panel, shape = Shape) {
+                                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("Очередь подготовки (${pendingQueue.size})", fontWeight = FontWeight.Bold)
+                                            Text("Ссылки сохраняются на телефоне. Для каждого видео формат выбирается отдельно.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                            pendingQueue.forEachIndexed { index, queued ->
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text("${index + 1}. " + queued.substringBefore("?"), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                    TextButton(onClick = {
+                                                        linkInput = queued
+                                                        pendingQueue = pendingQueue - queued
+                                                        prefs.edit().putString("pendingQueue", pendingQueue.joinToString("\n")).apply()
+                                                    }, enabled = !downloadBusy) { Text("Выбрать") }
+                                                    TextButton(onClick = {
+                                                        pendingQueue = pendingQueue - queued
+                                                        prefs.edit().putString("pendingQueue", pendingQueue.joinToString("\n")).apply()
+                                                    }) { Text("×") }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                                 if (savedLinks.isEmpty()) item { EmptyPanel("↓", "Пока пусто", "Поделись ссылкой из YouTube или вставь её здесь.") }
                                 items((if (newestFirst) savedLinks else savedLinks.reversed()).filter { it.contains(linkSearch.trim(), ignoreCase = true) }) { link ->
                                     Surface(color = Panel, shape = Shape) {
                                         Column(Modifier.padding(16.dp)) {
                                             Text(link, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                            OutlinedButton(onClick = {
+                                                if (link !in pendingQueue) {
+                                                    pendingQueue = pendingQueue + link
+                                                    prefs.edit().putString("pendingQueue", pendingQueue.joinToString("\n")).apply()
+                                                }
+                                            }, enabled = link !in pendingQueue, modifier = Modifier.fillMaxWidth()) {
+                                                Text(if (link in pendingQueue) "В очереди" else "Добавить в очередь")
+                                            }
                                             Row {
                                                 TextButton(onClick = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link))) }) { Text("Открыть") }
                                                 TextButton(onClick = {
