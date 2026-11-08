@@ -46,6 +46,36 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        val exportBackup = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
+            if (uri != null) try {
+                val payload = BackupStore.export(prefs)
+                contentResolver.openOutputStream(uri)?.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+                    ?: error("Не удалось открыть файл")
+                android.widget.Toast.makeText(this, "Резервная копия сохранена", android.widget.Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(this, "Ошибка экспорта: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+        val importBackup = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            if (uri != null) try {
+                val text = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { reader ->
+                    val buffer = CharArray(8192)
+                    val out = StringBuilder()
+                    while (true) {
+                        val n = reader.read(buffer)
+                        if (n < 0) break
+                        out.append(buffer, 0, n)
+                        require(out.length <= 2_000_000) { "Файл слишком большой" }
+                    }
+                    out.toString()
+                } ?: error("Не удалось прочитать файл")
+                val (channelsCount, linksCount) = BackupStore.import(prefs, text)
+                android.widget.Toast.makeText(this, "Восстановлено: каналов $channelsCount, ссылок $linksCount", android.widget.Toast.LENGTH_LONG).show()
+                recreate()
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(this, "Ошибка восстановления: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
         window.statusBarColor = android.graphics.Color.rgb(12, 16, 25)
         window.navigationBarColor = android.graphics.Color.rgb(23, 29, 42)
         @Suppress("DEPRECATION")
@@ -367,6 +397,21 @@ class MainActivity : ComponentActivity() {
                                                 }
                                                 Switch(checked = false, onCheckedChange = null)
                                             }
+                                        }
+                                    }
+                                }
+                                item { SectionTitle("Резервное копирование") }
+                                item {
+                                    Surface(color = Panel, shape = Shape) {
+                                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            Text("Сохраняются каналы, ссылки, описание и качество. Скачанные файлы в архив не входят.", color = Muted)
+                                            Button(onClick = { exportBackup.launch("robotpost-backup.json") }, modifier = Modifier.fillMaxWidth()) {
+                                                Text("Создать резервную копию")
+                                            }
+                                            OutlinedButton(onClick = { importBackup.launch(arrayOf("application/json", "text/plain", "*/*")) }, modifier = Modifier.fillMaxWidth()) {
+                                                Text("Восстановить из файла")
+                                            }
+                                            Text("Восстановление заменит текущие списки и настройки.", color = Muted, style = MaterialTheme.typography.bodySmall)
                                         }
                                     }
                                 }
