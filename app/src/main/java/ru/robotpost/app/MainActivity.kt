@@ -126,6 +126,8 @@ class MainActivity : ComponentActivity() {
                 var linkInput by remember { mutableStateOf(if (intent?.action == Intent.ACTION_SEND) (intent.getStringExtra(Intent.EXTRA_TEXT) ?: "") else "") }
                 var linkError by remember { mutableStateOf("") }
                 var downloadBusy by remember { mutableStateOf(false) }
+                var history by remember { mutableStateOf(DownloadHistory.list(this@MainActivity)) }
+                var clearHistoryConfirm by remember { mutableStateOf(false) }
                 var downloadStatus by remember { mutableStateOf("") }
                 var inspectStatus by remember { mutableStateOf("") }
                 var formatChoices by remember { mutableStateOf(listOf<Pair<String, String>>()) }
@@ -348,6 +350,8 @@ class MainActivity : ComponentActivity() {
                                                             val result = withContext(Dispatchers.IO) {
                                                                 DownloadEngine.download(this@MainActivity, url, Uri.parse(chosenRoot), format)
                                                             }
+                                                            DownloadHistory.add(this@MainActivity, result, url)
+                                                            history = DownloadHistory.list(this@MainActivity)
                                                             "Сохранено: " + result
                                                         } catch (e: Exception) {
                                                             "Ошибка: " + (e.localizedMessage ?: "Не удалось скачать видео")
@@ -474,6 +478,8 @@ class MainActivity : ComponentActivity() {
                                                                 chosenAudio.takeIf { it.isNotBlank() }?.let(Uri::parse)
                                                             )
                                                         }
+                                                        DownloadHistory.add(this@MainActivity, saved, "Ручное добавление")
+                                                        history = DownloadHistory.list(this@MainActivity)
                                                         "Сохранено: $saved"
                                                     } catch (e: Exception) { "Ошибка: ${e.localizedMessage}" }
                                                     busy = false
@@ -483,7 +489,41 @@ class MainActivity : ComponentActivity() {
                                         ) { Text(if (busy) "Сохраняем..." else "Сохранить комплект") }
                                     }
                                     if (result.isNotBlank()) item { Text(result, color = if (result.startsWith("Ошибка")) Color(0xFFFF9999) else Mint) }
-                                    item { Text("Для текущей версии файлы выбираются вручную. Автоматическая загрузка с YouTube ещё не подключена.", color = Muted) }
+                                    item { Text("Здесь можно также вручную собрать комплект из файлов телефона. Автоматическое скачивание находится на вкладке «Загрузки».", color = Muted) }
+                                    item {
+                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                            Text("История сохранений (${history.size})", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                            TextButton(enabled = history.isNotEmpty(), onClick = { clearHistoryConfirm = true }) { Text("Очистить") }
+                                        }
+                                    }
+                                    if (history.isEmpty()) item { Text("Сохранений пока нет. Новые комплекты появятся здесь.", color = Muted) }
+                                    items(history) { entry ->
+                                        Surface(color = Panel, shape = Shape) {
+                                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Text(entry.optString("name", "Комплект"), fontWeight = FontWeight.SemiBold)
+                                                Text(entry.optString("source", ""), color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                                Text(java.text.SimpleDateFormat("dd.MM.yy HH:mm", Locale.ROOT).format(Date(entry.optLong("savedAt"))), color = Mint, style = MaterialTheme.typography.bodySmall)
+                                                if (entry.optString("source").startsWith("https://")) {
+                                                    TextButton(onClick = {
+                                                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(entry.optString("source"))))
+                                                    }) { Text("Открыть оригинал") }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (clearHistoryConfirm) item {
+                                        AlertDialog(
+                                            onDismissRequest = { clearHistoryConfirm = false },
+                                            title = { Text("Очистить историю?") },
+                                            text = { Text("Удалятся только записи в приложении. Сохранённые MP4, M4A и TXT останутся на телефоне.") },
+                                            confirmButton = { TextButton(onClick = {
+                                                DownloadHistory.clear(this@MainActivity)
+                                                history = emptyList()
+                                                clearHistoryConfirm = false
+                                            }) { Text("Очистить") } },
+                                            dismissButton = { TextButton(onClick = { clearHistoryConfirm = false }) { Text("Отмена") } }
+                                        )
+                                    }
                                 }
                             }
                             4 -> LazyColumn(
