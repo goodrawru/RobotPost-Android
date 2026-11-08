@@ -930,6 +930,32 @@ class MainActivity : ComponentActivity() {
                                                 Text(entry.optString("name", "Комплект"), fontWeight = FontWeight.SemiBold)
                                                 Text(entry.optString("source", ""), color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                                 Text(java.text.SimpleDateFormat("dd.MM.yy HH:mm", Locale.ROOT).format(Date(entry.optLong("savedAt"))), color = Mint, style = MaterialTheme.typography.bodySmall)
+                                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                                    listOf(
+                                                        Triple("Видео", "video.mp4", "video/mp4"),
+                                                        Triple("Аудио", "audio.m4a", "audio/mp4"),
+                                                        Triple("Описание", "description.txt", "text/plain")
+                                                    ).forEach { (label, filename, mime) ->
+                                                        TextButton(onClick = {
+                                                            try {
+                                                                val root = prefs.getString("archiveRoot", "").orEmpty()
+                                                                require(root.isNotBlank()) { "Сначала выбери папку архива" }
+                                                                val files = ArchiveBrowser.files(this@MainActivity, Uri.parse(root), entry.optString("name"))
+                                                                val fileUri = files[filename]
+                                                                    ?: if (filename == "audio.m4a") files["audio.mp3"] else null
+                                                                require(fileUri != null) { "Файл не найден в выбранном архиве" }
+                                                                val intent = Intent(Intent.ACTION_VIEW).apply {
+                                                                    setDataAndType(fileUri, if (filename == "audio.m4a" && files["audio.m4a"] == null) "audio/mpeg" else mime)
+                                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                                }
+                                                                startActivity(intent)
+                                                            } catch (e: Exception) {
+                                                                android.widget.Toast.makeText(this@MainActivity,
+                                                                    DownloadEngine.readableError(e), android.widget.Toast.LENGTH_LONG).show()
+                                                            }
+                                                        }) { Text(label) }
+                                                    }
+                                                }
                                                 if (entry.optString("source").startsWith("https://")) {
                                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                                         TextButton(onClick = {
