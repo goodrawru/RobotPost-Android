@@ -11,11 +11,16 @@ import java.util.Date
 import java.util.Locale
 
 object DownloadEngine {
-    fun download(context: Context, url: String, root: Uri): String {
+    fun inspect(context: Context, url: String): JSONObject {
+        if (!Python.isStarted()) Python.start(AndroidPlatform(context))
+        return JSONObject(Python.getInstance().getModule("downloader").callAttr("inspect_video", url).toString())
+    }
+
+    fun download(context: Context, url: String, root: Uri, formatId: String): String {
         if (!Python.isStarted()) Python.start(AndroidPlatform(context))
         val temp = File(context.cacheDir, "robotpost_downloads").apply { mkdirs() }
         val json = Python.getInstance().getModule("downloader")
-            .callAttr("download_video", url, temp.absolutePath).toString()
+            .callAttr("download_video", url, temp.absolutePath, formatId).toString()
         val info = JSONObject(json)
         val file = File(info.getString("path"))
         val stamp = info.optString("date")
