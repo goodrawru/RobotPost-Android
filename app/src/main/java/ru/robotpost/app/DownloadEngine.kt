@@ -51,7 +51,7 @@ object DownloadEngine {
     fun inspect(context: Context, url: String): JSONObject =
         JSONObject(python(context).getModule("downloader").callAttr("inspect_video", url).toString())
 
-    fun download(context: Context, url: String, root: Uri, formatId: String, onTemp: (File) -> Unit = {}, onProgress: (String) -> Unit = {}, includeDescription: Boolean = true, videoOnly: Boolean = false): String {
+    fun download(context: Context, url: String, root: Uri, formatId: String, onTemp: (File) -> Unit = {}, onProgress: (String) -> Unit = {}, includeDescription: Boolean = true, videoOnly: Boolean = false, playlistName: String = "", playlistIndex: Int = 0): String {
         val temp = File(context.cacheDir, "robotpost_" + UUID.randomUUID().toString()).apply { mkdirs() }
         onTemp(temp)
         try {
