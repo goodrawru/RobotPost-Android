@@ -120,7 +120,8 @@ class DownloadForegroundService : Service() {
                             playlistName = if (playlistMode) playlistMeta?.optString("title").orEmpty() else "",
                             playlistIndex = if (playlistMode) playlistMeta?.optInt("index", 0) ?: 0 else 0)
                     }
-                    DownloadHistory.add(this@DownloadForegroundService, saved, url)
+                    DownloadHistory.add(this@DownloadForegroundService, saved, url,
+                        if (playlistMode) playlistMeta?.optString("title").orEmpty() else "")
                     completed++
                 } catch (e: Exception) {
                     if (stopping) break
