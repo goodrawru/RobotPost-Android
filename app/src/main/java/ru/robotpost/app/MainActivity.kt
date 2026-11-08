@@ -125,6 +125,8 @@ class MainActivity : ComponentActivity() {
                 var savedLinks by remember { mutableStateOf(prefs.getString("savedLinks", "")!!.lines().filter { it.isNotBlank() }) }
                 var pendingQueue by remember { mutableStateOf(prefs.getString("pendingQueue", "")!!.lines().filter { it.isNotBlank() }) }
                 var queueRunning by remember { mutableStateOf(false) }
+                var queueStopRequested by remember { mutableStateOf(false) }
+                var failedQueue by remember { mutableStateOf(prefs.getString("failedQueue", "")!!.lines().filter { it.isNotBlank() }) }
                 var queueStatus by remember { mutableStateOf("") }
                 var playlistUrl by remember { mutableStateOf("") }
                 var playlistBusy by remember { mutableStateOf(false) }
@@ -595,7 +597,7 @@ class MainActivity : ComponentActivity() {
                                     Surface(color = Panel, shape = Shape) {
                                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Text("Очередь подготовки (${pendingQueue.size})", fontWeight = FontWeight.Bold)
-                                            Text("Единое качество для всех роликов очереди (максимум 720p). При ошибке очередь останавливается.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                            Text("Единое качество для всех роликов очереди (максимум 720p). При ошибке ролик пропускается и сохраняется для повторной попытки.", color = Muted, style = MaterialTheme.typography.bodySmall)
                                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                                 listOf("720", "480", "360", "audio").forEach { quality ->
                                                     OutlinedButton(
@@ -613,13 +615,17 @@ class MainActivity : ComponentActivity() {
                                                 enabled = pendingQueue.isNotEmpty() && chosenRoot.isNotBlank() && !downloadBusy && !queueRunning,
                                                 modifier = Modifier.fillMaxWidth(),
                                                 onClick = {
+                                                    queueStopRequested = false
                                                     queueRunning = true
                                                     downloadBusy = true
                                                     queueStatus = "Подготовка очереди..."
                                                     downloadScope.launch {
                                                         try {
-                                                            while (pendingQueue.isNotEmpty()) {
+                                                            var completed = 0
+                                                            var failures = 0
+                                                            while (pendingQueue.isNotEmpty() && !queueStopRequested) {
                                                                 val current = pendingQueue.first()
+                                                                try {
                                                                 queueStatus = "Проверяю: " + current
                                                                 val info = withContext(Dispatchers.IO) {
                                                                     DownloadEngine.inspect(this@MainActivity, current)
@@ -644,11 +650,22 @@ class MainActivity : ComponentActivity() {
                                                                 }
                                                                 DownloadHistory.add(this@MainActivity, result, current)
                                                                 history = DownloadHistory.list(this@MainActivity)
+                                                                    completed++
+                                                                } catch (e: Exception) {
+                                                                    if (queueStopRequested) break
+                                                                    failures++
+                                                                    if (current !in failedQueue) {
+                                                                        failedQueue = failedQueue + current
+                                                                        prefs.edit().putString("failedQueue", failedQueue.joinToString("\n")).apply()
+                                                                    }
+                                                                    queueStatus = "Ошибка ролика: " + (e.localizedMessage ?: current)
+                                                                }
                                                                 pendingQueue = pendingQueue.drop(1)
                                                                 prefs.edit().putString("pendingQueue", pendingQueue.joinToString("\n")).apply()
                                                                 activeDownloadDirectory = null
                                                             }
-                                                            queueStatus = "Очередь выполнена"
+                                                            queueStatus = if (queueStopRequested) "Очередь остановлена · готово: $completed · ошибок: $failures"
+                                                                else "Очередь завершена · готово: $completed · ошибок: $failures"
                                                         } catch (e: Exception) {
                                                             queueStatus = "Очередь остановлена: " + (e.localizedMessage ?: "Ошибка")
                                                         } finally {
@@ -662,12 +679,26 @@ class MainActivity : ComponentActivity() {
                                             if (queueStatus.isNotBlank()) Text(queueStatus, color = if (queueStatus.startsWith("Очередь остановлена")) Color(0xFFFF9999) else Mint)
                                             if (queueRunning) OutlinedButton(
                                                 onClick = {
+                                                    queueStopRequested = true
                                                     activeDownloadDirectory?.let { java.io.File(it, "cancel.flag").writeText("cancel") }
                                                     queueStatus = "Останавливаю очередь..."
                                                 },
                                                 enabled = activeDownloadDirectory != null,
                                                 modifier = Modifier.fillMaxWidth()
                                             ) { Text("Остановить очередь") }
+                                            if (failedQueue.isNotEmpty()) {
+                                                Text("Неудачные загрузки (${failedQueue.size})", fontWeight = FontWeight.Bold)
+                                                OutlinedButton(
+                                                    enabled = !queueRunning && !downloadBusy,
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    onClick = {
+                                                        pendingQueue = (pendingQueue + failedQueue).distinct()
+                                                        failedQueue = emptyList()
+                                                        prefs.edit().putString("pendingQueue", pendingQueue.joinToString("\n"))
+                                                            .putString("failedQueue", "").apply()
+                                                    }
+                                                ) { Text("Повторить неудачные") }
+                                            }
                                             pendingQueue.forEachIndexed { index, queued ->
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     Text("${index + 1}. " + queued.substringBefore("?"), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
