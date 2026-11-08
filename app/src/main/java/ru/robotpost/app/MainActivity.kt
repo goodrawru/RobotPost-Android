@@ -278,27 +278,34 @@ class MainActivity : ComponentActivity() {
                 var description by remember { mutableStateOf(prefs.getString("description", "") ?: "") }
                 val tabs = listOf("Главная", "Каналы", "Загрузки", "Архив", "Настройки")
                 val glyphs = listOf("⌂", "▶", "↓", "▤", "⚙")
-                Scaffold(
-                    containerColor = Ink,
-                    bottomBar = {
-                        NavigationBar(containerColor = Panel) {
+                Scaffold(containerColor = Ink) { insets ->
+                    Row(Modifier.fillMaxSize().padding(insets)) {
+                        NavigationRail(
+                            containerColor = Panel,
+                            modifier = Modifier.width(76.dp),
+                            header = { Spacer(Modifier.height(8.dp)) }
+                        ) {
                             tabs.forEachIndexed { i, name ->
-                                NavigationBarItem(
+                                NavigationRailItem(
                                     selected = page == i,
                                     onClick = { page = i },
                                     icon = { Text(glyphs[i], style = MaterialTheme.typography.titleLarge) },
                                     label = { Text(name, maxLines = 1, style = MaterialTheme.typography.labelSmall) },
-                                    colors = NavigationBarItemDefaults.colors(
+                                    alwaysShowLabel = true,
+                                    colors = NavigationRailItemDefaults.colors(
                                         selectedIconColor = Accent, selectedTextColor = Accent,
                                         indicatorColor = Color(0xFF343049),
                                         unselectedIconColor = Muted, unselectedTextColor = Muted
                                     )
                                 )
+                                if (i < tabs.lastIndex) HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 14.dp),
+                                    thickness = 0.5.dp, color = Color(0xFF343B4A)
+                                )
                             }
                         }
-                    }
-                ) { insets ->
-                    Column(Modifier.fillMaxSize().padding(insets)) {
+                        VerticalDivider(thickness = 1.dp, color = Color(0xFF343B4A))
+                    Column(Modifier.weight(1f).fillMaxHeight()) {
                         Row(
                             Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -1272,6 +1279,7 @@ class MainActivity : ComponentActivity() {
                                 item { Text("RobotPost Android · UI alpha 0.2", color = Muted, style = MaterialTheme.typography.labelMedium) }
                             }
                         }
+                    }
                     }
                 }
             }
