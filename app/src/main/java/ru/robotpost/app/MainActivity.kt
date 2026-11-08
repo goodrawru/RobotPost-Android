@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
@@ -69,7 +70,7 @@ class MainActivity : ComponentActivity() {
                 var autoCheck by remember { mutableStateOf(prefs.getBoolean("autoCheck", false)) }
                 var description by remember { mutableStateOf(prefs.getString("description", "") ?: "") }
                 val tabs = listOf("Главная", "Каналы", "Загрузки", "Архив", "Настройки")
-                val glyphs = listOf("⌂", "▣", "↓", "▤", "⚙")
+                val glyphs = listOf("⌂", "▶", "↓", "▤", "⚙")
                 Scaffold(
                     containerColor = Ink,
                     bottomBar = {
@@ -97,11 +98,11 @@ class MainActivity : ComponentActivity() {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column {
-                                Text("ROBOTPOST", color = Accent, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                Text("ROBOTPOST  •  ANDROID", color = Accent, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                                 Text(tabs[page], style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                             }
                             Surface(color = Panel, shape = RoundedCornerShape(14.dp)) {
-                                Text("RP", modifier = Modifier.padding(13.dp), color = Mint, fontWeight = FontWeight.Bold)
+                                Icon(painter = painterResource(R.drawable.robotpost_icon), contentDescription = "RobotPost", modifier = Modifier.size(48.dp), tint = Color.Unspecified)
                             }
                         }
                         when(page) {
@@ -115,8 +116,8 @@ class MainActivity : ComponentActivity() {
                                         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                             Text("Твоя медиатека. На телефоне.", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                                             Text("Сохраняй каналы, подготавливай описания и управляй локальным архивом.", color = Muted)
-                                            Text("● Интерфейс готов к подключению загрузчика", color = Mint, style = MaterialTheme.typography.bodySmall)
-                                            Button(onClick = { page = 1 }, modifier = Modifier.fillMaxWidth()) { Text("Открыть каналы") }
+                                            Text("● Локальная медиатека доступна", color = Mint, style = MaterialTheme.typography.bodySmall)
+                                            Button(onClick = { page = 2 }, modifier = Modifier.fillMaxWidth()) { Text("Добавить ссылку на видео") }
                                         }
                                     }
                                 }
@@ -182,7 +183,7 @@ class MainActivity : ComponentActivity() {
                                 contentPadding = PaddingValues(18.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                item { Text("Список видео", style = MaterialTheme.typography.titleLarge) }
+                                item { Text("Список видео", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
                                 item { Text("Ссылки для последующей загрузки. Видео пока не скачиваются.", color = Muted) }
                                 item { OutlinedTextField(value = linkInput, onValueChange = { linkInput = it; linkError = "" }, label = { Text("Ссылка YouTube") }, modifier = Modifier.fillMaxWidth()) }
                                 if (linkError.isNotEmpty()) item { Text(linkError, color = Color(0xFFFF9999)) }
