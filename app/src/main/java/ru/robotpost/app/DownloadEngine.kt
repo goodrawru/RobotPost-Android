@@ -9,35 +9,50 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 object DownloadEngine {
-    fun inspect(context: Context, url: String): JSONObject {
-        if (!Python.isStarted()) Python.start(AndroidPlatform(context))
-        return JSONObject(Python.getInstance().getModule("downloader").callAttr("inspect_video", url).toString())
+    private fun python(context: Context): Python {
+        if (!Python.isStarted()) Python.start(AndroidPlatform(context.applicationContext))
+        return Python.getInstance()
     }
+
+    fun inspect(context: Context, url: String): JSONObject =
+        JSONObject(python(context).getModule("downloader").callAttr("inspect_video", url).toString())
 
     fun download(context: Context, url: String, root: Uri, formatId: String): String {
-        if (!Python.isStarted()) Python.start(AndroidPlatform(context))
-        val temp = File(context.cacheDir, "robotpost_downloads").apply { mkdirs() }
-        val json = Python.getInstance().getModule("downloader")
-            .callAttr("download_video", url, temp.absolutePath, formatId).toString()
-        val info = JSONObject(json)
-        val file = File(info.getString("path"))
-        val stamp = info.optString("date")
-        val date = if (Regex("[0-9]{8}").matches(stamp))
-            "${stamp.substring(6, 8)}.${stamp.substring(4, 6)}.${stamp.substring(2, 4)}"
-        else SimpleDateFormat("dd.MM.yy", Locale.ROOT).format(Date())
-        val result = ArchiveExporter.export(
-            context, root, info.optString("channel", "YouTube"),
-            info.optString("title", "Видео"), date,
-            cleanDownloadDescription(info.optString("description", "")),
-            Uri.fromFile(file), null
-        )
-        file.delete()
-        return result
+        val temp = File(context.cacheDir, "robotpost_" + UUID.randomUUID().toString()).apply { mkdirs() }
+        try {
+            val json = python(context).getModule("downloader")
+                .callAttr("download_video", url, temp.absolutePath, formatId).toString()
+            val info = JSONObject(json)
+            val videoPath = info.optString("video")
+            val audioPath = info.optString("audio")
+            var video = videoPath.takeIf { it.isNotBlank() }?.let(::File)
+            val audio = audioPath.takeIf { it.isNotBlank() }?.let(::File)
+            if (info.optBoolean("merge")) {
+                require(video != null && audio != null) { "Не хватает потоков для объединения" }
+                video = Mp4Muxer.combine(video, audio, File(temp, "merged.mp4"))
+            }
+            val stamp = info.optString("date")
+            val date = if (Regex("[0-9]{8}").matches(stamp))
+                "${stamp.substring(6, 8)}.${stamp.substring(4, 6)}.${stamp.substring(2, 4)}"
+            else SimpleDateFormat("dd.MM.yy", Locale.ROOT).format(Date())
+            return ArchiveExporter.export(
+                context, root,
+                info.optString("channel", "YouTube"), info.optString("title", "Видео"),
+                date, cleanDescription(info.optString("description", "")),
+                video?.let { Uri.fromFile(it) },
+                audio?.let { Uri.fromFile(it) },
+                "audio.m4a"
+            )
+        } finally {
+            temp.listFiles()?.forEach { it.delete() }
+            temp.delete()
+        }
     }
 
-    private fun cleanDownloadDescription(value: String): String =
+    private fun cleanDescription(value: String): String =
         value.lines().filterNot {
             Regex("(?i)(реклама|спонсор|промокод|партн[её]рская ссылка|advertisement|sponsored|promo code|affiliate link)")
                 .containsMatchIn(it)
