@@ -253,9 +253,13 @@ def inspect_playlist(playlist_url, limit=100):
     if not parse_qs(parsed.query).get("list") and "/playlist" not in parsed.path:
         raise ValueError("Нужна ссылка YouTube-плейлиста с параметром list")
     limit = max(1, min(int(limit), 100))
+    # Playlist metadata should fail quickly on a broken VPN/DNS connection.
+    # Video downloads retain their separate retry policy.
     opts = _options("auto")
     opts.update({"noplaylist": False, "extract_flat": "in_playlist",
-                 "playlistend": limit, "ignoreerrors": True})
+                 "playlistend": limit, "ignoreerrors": True,
+                 "socket_timeout": 12, "retries": 1,
+                 "extractor_retries": 1, "fragment_retries": 1})
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
     if not info or not info.get("entries"):
