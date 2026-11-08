@@ -157,6 +157,7 @@ class MainActivity : ComponentActivity() {
                 var showPlaylistPreview by remember { mutableStateOf(false) }
                 var queueQuality by remember { mutableStateOf(prefs.getString("queueQuality", "720") ?: "720") }
                 var includeDescription by remember { mutableStateOf(prefs.getBoolean("includeDescription", true)) }
+                var playlistVideoOnly by remember { mutableStateOf(prefs.getBoolean("playlistVideoOnly", false)) }
                 var queueVideoOnly by remember { mutableStateOf(prefs.getBoolean("queueVideoOnly", false)) }
                 var expandedArchive by remember { mutableStateOf(setOf<String>()) }
                 var linkInput by remember { mutableStateOf(if (intent?.action == Intent.ACTION_SEND) (intent.getStringExtra(Intent.EXTRA_TEXT) ?: "") else "") }
@@ -691,7 +692,19 @@ class MainActivity : ComponentActivity() {
                                                                 if (entry.second in playlistSelected) existing.add(entry.second)
                                                             }
                                                             pendingQueue = existing.toList()
-                                                            prefs.edit().putString("pendingQueue", pendingQueue.joinToString("\n")).apply()
+                                                            val metadata = runCatching {
+                                                                JSONObject(prefs.getString("playlistVideoMap", "{}") ?: "{}")
+                                                            }.getOrDefault(JSONObject())
+                                                            playlistPreview.forEachIndexed { index, entry ->
+                                                                if (entry.second in playlistSelected) {
+                                                                    metadata.put(entry.second, JSONObject()
+                                                                        .put("title", playlistPreviewTitle)
+                                                                        .put("index", index + 1))
+                                                                }
+                                                            }
+                                                            prefs.edit()
+                                                                .putString("pendingQueue", pendingQueue.joinToString("\n"))
+                                                                .putString("playlistVideoMap", metadata.toString()).apply()
                                                             playlistStatus = "Добавлено в очередь: ${existing.size - before}"
                                                             showPlaylistPreview = false
                                                         }, enabled = playlistSelected.isNotEmpty()) { Text("Добавить выбранные") }
@@ -708,22 +721,25 @@ class MainActivity : ComponentActivity() {
                                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Text("Очередь подготовки (${pendingQueue.size})", fontWeight = FontWeight.Bold)
                                             Text("Единое качество для всех роликов очереди (максимум 720p). При ошибке ролик пропускается и сохраняется для повторной попытки.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                            Text("Режим сохранения", fontWeight = FontWeight.SemiBold)
                                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Checkbox(checked = includeDescription, onCheckedChange = {
-                                                    includeDescription = it
-                                                    prefs.edit().putBoolean("includeDescription", it).apply()
+                                                RadioButton(selected = !playlistVideoOnly, onClick = {
+                                                    playlistVideoOnly = false
+                                                    prefs.edit().putBoolean("playlistVideoOnly", false).apply()
                                                 })
-                                                Text("Сохранять описание TXT")
+                                                Text("Полный комплект: MP4 + M4A + TXT")
                                             }
-                                            Text(if (includeDescription) "Видео + аудио + описание" else "Только медиа: видео со звуком, без TXT",
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                RadioButton(selected = playlistVideoOnly, onClick = {
+                                                    playlistVideoOnly = true
+                                                    if (queueQuality == "audio") queueQuality = "720"
+                                                    prefs.edit().putBoolean("playlistVideoOnly", true)
+                                                        .putString("queueQuality", queueQuality).apply()
+                                                })
+                                                Text("Только видео: MP4 со звуком в папке плейлиста")
+                                            }
+                                            if (playlistVideoOnly) Text("Для видео, добавленных из плейлиста, создаётся общая папка с названием плейлиста. Отдельные аудио и TXT не сохраняются.",
                                                 color = Muted, style = MaterialTheme.typography.bodySmall)
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Checkbox(checked = queueVideoOnly, enabled = !queueRunning && queueQuality != "audio", onCheckedChange = {
-                                                    queueVideoOnly = it
-                                                    prefs.edit().putBoolean("queueVideoOnly", it).apply()
-                                                })
-                                                Text("Только MP4 со звуком (без отдельного аудио и TXT)")
-                                            }
                                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                                 listOf("720", "480", "360", "audio").forEach { quality ->
                                                     OutlinedButton(
@@ -731,7 +747,7 @@ class MainActivity : ComponentActivity() {
                                                             queueQuality = quality
                                                             prefs.edit().putString("queueQuality", quality).apply()
                                                         },
-                                                        enabled = !queueRunning && queueQuality != quality,
+                                                        enabled = !queueRunning && queueQuality != quality && !(playlistVideoOnly && quality == "audio"),
                                                         modifier = Modifier.weight(1f),
                                                         contentPadding = PaddingValues(horizontal = 2.dp)
                                                     ) { Text(if (quality == "audio") "M4A" else quality + "p") }
