@@ -1,6 +1,9 @@
 name: RobotPost Android APK
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/android-apk.yml'
 permissions:
   contents: read
 jobs:
