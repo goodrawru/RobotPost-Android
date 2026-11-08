@@ -110,7 +110,8 @@ class DownloadForegroundService : Service() {
                         DownloadEngine.download(this@DownloadForegroundService, url, Uri.parse(root), selected.getString("id"),
                             onTemp = { activeTemp = it },
                             onProgress = { progress -> status(progress) },
-                            includeDescription = prefs.getBoolean("includeDescription", true))
+                            includeDescription = prefs.getBoolean("includeDescription", true),
+                            videoOnly = prefs.getBoolean("queueVideoOnly", false) && quality != "audio")
                     }
                     DownloadHistory.add(this@DownloadForegroundService, saved, url)
                     completed++
