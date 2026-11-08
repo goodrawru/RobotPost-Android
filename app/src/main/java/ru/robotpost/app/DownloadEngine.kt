@@ -87,7 +87,7 @@ object DownloadEngine {
                 require(video != null && audio != null) { "Не хватает потоков для объединения" }
                 video = Mp4Muxer.combine(video, audio, File(temp, "merged.mp4"))
             }
-            if (!videoOnly && video != null && audio == null) {
+            if (!videoOnly && playlistName.isBlank() && video != null && audio == null) {
                 audio = AudioExtractor.extract(video, File(temp, "audio.m4a"))
             }
             val stamp = info.optString("date")
