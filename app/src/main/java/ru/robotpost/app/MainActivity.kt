@@ -34,11 +34,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 
 private val Ink = Color(0xFF0C1019)
-private val Panel = Color(0xFF171D2A)
+private val Panel = Color(0xFF1B2332)
 private val Accent = Color(0xFFB49BFF)
 private val Muted = Color(0xFFA4AEC1)
 private val Mint = Color(0xFF78E1BF)
-private val Shape = RoundedCornerShape(20.dp)
+private val Shape = RoundedCornerShape(16.dp)
+private val Separator = Color(0xFF364052)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1290,7 +1291,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun Metric(label: String, value: String, modifier: Modifier = Modifier) {
     Surface(modifier = modifier, color = Panel, shape = Shape) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Accent)
             Text(label, color = Muted)
         }
@@ -1305,13 +1306,15 @@ private fun SectionTitle(title: String) {
 @Composable
 private fun ActionTile(icon: String, title: String, subtitle: String, action: () -> Unit) {
     Surface(color = Panel, shape = Shape, modifier = Modifier.fillMaxWidth().clickable(onClick = action)) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(icon, color = Accent, style = MaterialTheme.typography.headlineMedium)
             Column(Modifier.weight(1f)) {
                 Text(title, fontWeight = FontWeight.SemiBold)
                 Text(subtitle, color = Muted, style = MaterialTheme.typography.bodySmall)
             }
-            Text("›", color = Muted, style = MaterialTheme.typography.headlineSmall)
+            Surface(color = Color(0xFF303A50), shape = RoundedCornerShape(10.dp)) {
+                Text("›", color = Accent, modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp), style = MaterialTheme.typography.titleLarge)
+            }
         }
     }
 }
@@ -1326,6 +1329,7 @@ private fun EmptyPanel(symbol: String, title: String, subtitle: String) {
         ) {
             Text(symbol, color = Accent, style = MaterialTheme.typography.displayMedium)
             Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            HorizontalDivider(thickness = 1.dp, color = Separator)
             Text(subtitle, color = Muted)
         }
     }
