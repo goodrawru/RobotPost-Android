@@ -126,6 +126,10 @@ class MainActivity : ComponentActivity() {
                 var pendingQueue by remember { mutableStateOf(prefs.getString("pendingQueue", "")!!.lines().filter { it.isNotBlank() }) }
                 var queueRunning by remember { mutableStateOf(false) }
                 var queueStatus by remember { mutableStateOf("") }
+                var playlistUrl by remember { mutableStateOf("") }
+                var playlistBusy by remember { mutableStateOf(false) }
+                var playlistStatus by remember { mutableStateOf("") }
+                var queueQuality by remember { mutableStateOf(prefs.getString("queueQuality", "720") ?: "720") }
                 var linkInput by remember { mutableStateOf(if (intent?.action == Intent.ACTION_SEND) (intent.getStringExtra(Intent.EXTRA_TEXT) ?: "") else "") }
                 var linkError by remember { mutableStateOf("") }
                 var downloadBusy by remember { mutableStateOf(false) }
@@ -546,8 +550,65 @@ class MainActivity : ComponentActivity() {
                                 item {
                                     Surface(color = Panel, shape = Shape) {
                                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("Импорт плейлиста YouTube", fontWeight = FontWeight.Bold)
+                                            Text("Добавь до 100 видео одним действием. Качество и папка архива задаются один раз для всей очереди.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                            OutlinedTextField(
+                                                value = playlistUrl, onValueChange = { playlistUrl = it },
+                                                label = { Text("Ссылка на плейлист") },
+                                                singleLine = true, modifier = Modifier.fillMaxWidth()
+                                            )
+                                            Button(
+                                                enabled = !playlistBusy && !queueRunning && playlistUrl.startsWith("https://"),
+                                                modifier = Modifier.fillMaxWidth(),
+                                                onClick = {
+                                                    playlistBusy = true
+                                                    playlistStatus = "Получаю список роликов..."
+                                                    downloadScope.launch {
+                                                        try {
+                                                            val result = withContext(Dispatchers.IO) {
+                                                                DownloadEngine.playlist(this@MainActivity, playlistUrl.trim())
+                                                            }
+                                                            val entries = result.getJSONArray("entries")
+                                                            val existing = pendingQueue.toMutableSet()
+                                                            var added = 0
+                                                            for (index in 0 until entries.length()) {
+                                                                val url = entries.getJSONObject(index).getString("url")
+                                                                if (existing.add(url)) added++
+                                                            }
+                                                            pendingQueue = existing.toList()
+                                                            prefs.edit().putString("pendingQueue", pendingQueue.joinToString("\n")).apply()
+                                                            playlistStatus = "Добавлено: $added · " + result.optString("title")
+                                                            if (result.optBoolean("limited")) playlistStatus += " (первые 100 видео)"
+                                                        } catch (e: Exception) {
+                                                            playlistStatus = "Ошибка плейлиста: " + (e.localizedMessage ?: "Не удалось прочитать")
+                                                        } finally {
+                                                            playlistBusy = false
+                                                        }
+                                                    }
+                                                }
+                                            ) { Text(if (playlistBusy) "Читаю плейлист..." else "Добавить плейлист в очередь") }
+                                            if (playlistStatus.isNotBlank()) Text(playlistStatus)
+                                        }
+                                    }
+                                }
+                                item {
+                                    Surface(color = Panel, shape = Shape) {
+                                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Text("Очередь подготовки (${pendingQueue.size})", fontWeight = FontWeight.Bold)
-                                            Text("Автоматическая очередь выбирает лучшее доступное качество до 720p. При ошибке останавливается, оставляя проблемную ссылку для повтора.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                            Text("Единое качество для всех роликов очереди (максимум 720p). При ошибке очередь останавливается.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                listOf("720", "480", "360", "audio").forEach { quality ->
+                                                    OutlinedButton(
+                                                        onClick = {
+                                                            queueQuality = quality
+                                                            prefs.edit().putString("queueQuality", quality).apply()
+                                                        },
+                                                        enabled = !queueRunning && queueQuality != quality,
+                                                        modifier = Modifier.weight(1f),
+                                                        contentPadding = PaddingValues(horizontal = 2.dp)
+                                                    ) { Text(if (quality == "audio") "M4A" else quality + "p") }
+                                                }
+                                            }
                                             Button(
                                                 enabled = pendingQueue.isNotEmpty() && chosenRoot.isNotBlank() && !downloadBusy && !queueRunning,
                                                 modifier = Modifier.fillMaxWidth(),
@@ -567,7 +628,12 @@ class MainActivity : ComponentActivity() {
                                                                 if (available == null || available.length() == 0) {
                                                                     error("Нет доступных форматов для " + current)
                                                                 }
-                                                                val format = available.getJSONObject(0).getString("id")
+                                                                val selected = (0 until available.length()).map { available.getJSONObject(it) }
+                                                                    .firstOrNull { candidate ->
+                                                                        if (queueQuality == "audio") candidate.optString("kind") == "audio"
+                                                                        else candidate.optString("kind") != "audio" && candidate.optInt("height", 0) in 1..queueQuality.toInt()
+                                                                    } ?: error("Нет формата " + queueQuality + " для " + current)
+                                                                val format = selected.getString("id")
                                                                 queueStatus = "Скачиваю: " + info.optString("title", current)
                                                                 val result = withContext(Dispatchers.IO) {
                                                                     DownloadEngine.download(
