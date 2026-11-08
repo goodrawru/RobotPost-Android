@@ -135,6 +135,8 @@ class MainActivity : ComponentActivity() {
                             1 -> {
                                 var input by remember { mutableStateOf("") }
                                 var error by remember { mutableStateOf("") }
+                                var channelSearch by remember { mutableStateOf("") }
+                                var channelToDelete by remember { mutableStateOf<String?>(null) }
                                 Column(Modifier.fillMaxSize().padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Text("Источники видео", color = Muted)
                                     OutlinedTextField(
@@ -160,18 +162,44 @@ class MainActivity : ComponentActivity() {
                                         }
                                     ) { Text("Добавить канал") }
                                     Text("Сохранено: ${channels.size}", color = Muted)
+                                    OutlinedTextField(
+                                        value = channelSearch,
+                                        onValueChange = { channelSearch = it },
+                                        label = { Text("Поиск канала") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    if (channelToDelete != null) {
+                                        AlertDialog(
+                                            onDismissRequest = { channelToDelete = null },
+                                            title = { Text("Удалить канал?") },
+                                            text = { Text("Канал исчезнет из списка RobotPost. Файлы не затрагиваются.") },
+                                            confirmButton = {
+                                                TextButton(onClick = {
+                                                    channels = channels - channelToDelete!!
+                                                    prefs.edit().putString("channels", channels.joinToString("\n")).apply()
+                                                    channelToDelete = null
+                                                }) { Text("Удалить") }
+                                            },
+                                            dismissButton = { TextButton(onClick = { channelToDelete = null }) { Text("Отмена") } }
+                                        )
+                                    }
                                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        items(channels) { channel ->
+                                        items(channels.filter { it.contains(channelSearch.trim(), ignoreCase = true) }) { channel ->
                                             Surface(color = Panel, shape = Shape) {
                                                 Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                                     Column(Modifier.weight(1f)) {
                                                         Text(channel.substringAfterLast("/").ifBlank { "YouTube-канал" }, fontWeight = FontWeight.SemiBold)
                                                         Text(channel, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
                                                     }
-                                                    TextButton(onClick = {
-                                                        channels = channels - channel
-                                                        prefs.edit().putString("channels", channels.joinToString("\n")).apply()
-                                                    }) { Text("Удалить") }
+                                                    Column {
+                                                        TextButton(onClick = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(channel))) }) { Text("Открыть") }
+                                                        TextButton(onClick = {
+                                                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("YouTube channel", channel))
+                                                        }) { Text("Копировать") }
+                                                        TextButton(onClick = { channelToDelete = channel }) { Text("Удалить") }
+                                                    }
                                                 }
                                             }
                                         }
@@ -246,6 +274,7 @@ class MainActivity : ComponentActivity() {
                                 ) {
                                     item { Text("Редактор описания", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
                                     item { Text("Вставь описание ролика. Удаляются типовые рекламные строки; таймкоды сохраняются. Проверь результат перед публикацией.", color = Muted) }
+                                    item { Text("Исходный текст: ${description.length} символов · После очистки: ${cleaned.length} · Удалено строк: ${description.lines().size - cleaned.lines().size}", color = Mint, style = MaterialTheme.typography.bodySmall) }
                                     item {
                                         OutlinedTextField(
                                             value = description,
