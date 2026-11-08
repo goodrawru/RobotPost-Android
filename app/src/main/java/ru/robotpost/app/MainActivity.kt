@@ -680,6 +680,7 @@ class MainActivity : ComponentActivity() {
                                                     prefs.edit().putBoolean("queueWasRunning", true).apply()
                                                     downloadBusy = true
                                                     queueStatus = "Подготовка очереди..."
+                                                    DownloadNotifications.show(this@MainActivity, "RobotPost · загрузки", "Подготовка очереди")
                                                     downloadScope.launch {
                                                         try {
                                                             var completed = 0
@@ -702,6 +703,7 @@ class MainActivity : ComponentActivity() {
                                                                     } ?: error("Нет формата " + queueQuality + " для " + current)
                                                                 val format = selected.getString("id")
                                                                 queueStatus = "Скачиваю: " + info.optString("title", current)
+                                                                DownloadNotifications.show(this@MainActivity, "RobotPost · загрузка", info.optString("title", current))
                                                                 val result = withContext(Dispatchers.IO) {
                                                                     DownloadEngine.download(
                                                                         this@MainActivity, current, Uri.parse(chosenRoot), format,
@@ -733,6 +735,7 @@ class MainActivity : ComponentActivity() {
                                                             queueStatus = "Очередь остановлена: " + (e.localizedMessage ?: "Ошибка")
                                                         } finally {
                                                             activeDownloadDirectory = null
+                                                            DownloadNotifications.finish(this@MainActivity, queueStatus)
                                                             queueRunning = false
                                                             prefs.edit().putBoolean("queueWasRunning", false).apply()
                                                             downloadBusy = false
