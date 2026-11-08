@@ -139,8 +139,17 @@ class MainActivity : ComponentActivity() {
                     else ""
                 ) }
                 LaunchedEffect(Unit) {
-                    if (prefs.getBoolean("queueWasRunning", false))
-                        prefs.edit().putBoolean("queueWasRunning", false).apply()
+                    while (true) {
+                        val running = prefs.getBoolean("queueWasRunning", false)
+                        queueRunning = running
+                        if (running || prefs.getString("queueServiceStatus", "").orEmpty().isNotBlank()) {
+                            queueStatus = prefs.getString("queueServiceStatus", "").orEmpty()
+                        }
+                        pendingQueue = prefs.getString("pendingQueue", "").orEmpty().lines().filter { it.isNotBlank() }
+                        failedQueue = prefs.getString("failedQueue", "").orEmpty().lines().filter { it.isNotBlank() }
+                        history = DownloadHistory.list(this@MainActivity)
+                        delay(1000)
+                    }
                 }
                 var playlistUrl by remember { mutableStateOf("") }
                 var playlistBusy by remember { mutableStateOf(false) }
@@ -691,11 +700,10 @@ class MainActivity : ComponentActivity() {
                                             if (queueStatus.isNotBlank()) Text(queueStatus, color = if (queueStatus.startsWith("Очередь остановлена")) Color(0xFFFF9999) else Mint)
                                             if (queueRunning) OutlinedButton(
                                                 onClick = {
-                                                    queueStopRequested = true
-                                                    activeDownloadDirectory?.let { java.io.File(it, "cancel.flag").writeText("cancel") }
+                                                    startService(Intent(this@MainActivity, DownloadForegroundService::class.java)
+                                                        .setAction(DownloadForegroundService.ACTION_STOP))
                                                     queueStatus = "Останавливаю очередь..."
                                                 },
-                                                enabled = activeDownloadDirectory != null,
                                                 modifier = Modifier.fillMaxWidth()
                                             ) { Text("Остановить очередь") }
                                             if (failedQueue.isNotEmpty()) {
