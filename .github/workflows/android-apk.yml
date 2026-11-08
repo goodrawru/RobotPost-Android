@@ -34,7 +34,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      # Verification build for left navigation rail UI.
+      # Verification build for compact cards and visual separators.
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
       - uses: actions/upload-artifact@v4
