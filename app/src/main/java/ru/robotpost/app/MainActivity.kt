@@ -285,26 +285,77 @@ class MainActivity : ComponentActivity() {
                                     }
                                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                         items(channels.filter { it.contains(channelSearch.trim(), ignoreCase = true) }) { channel ->
+                                            var expanded by remember(channel) { mutableStateOf(false) }
+                                            var loadingVideos by remember(channel) { mutableStateOf(false) }
+                                            var videos by remember(channel) { mutableStateOf(listOf<Pair<String, String>>()) }
+                                            var videoError by remember(channel) { mutableStateOf("") }
+                                            val channelScope = rememberCoroutineScope()
                                             Surface(color = Panel, shape = Shape) {
-                                                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                    Column(Modifier.weight(1f)) {
-                                                        Text(channel.substringAfterLast("/").ifBlank { "YouTube-канал" }, fontWeight = FontWeight.SemiBold)
-                                                        Text(channel, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-                                                    }
-                                                    Column {
-                                                        TextButton(onClick = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(channel))) }) { Text("Открыть") }
-                                                        TextButton(onClick = {
+                                                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                                    Text(channel.substringAfterLast("/").ifBlank { "YouTube-канал" }, fontWeight = FontWeight.SemiBold)
+                                                    Text(channel, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                                        OutlinedButton(onClick = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(channel))) }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 4.dp)) { Text("Открыть", style = MaterialTheme.typography.labelSmall) }
+                                                        OutlinedButton(onClick = {
                                                             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                                             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("YouTube channel", channel))
-                                                        }) { Text("Копировать") }
-                                                        TextButton(onClick = {
+                                                        }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 4.dp)) { Text("Копия", style = MaterialTheme.typography.labelSmall) }
+                                                        OutlinedButton(onClick = {
                                                             val share = Intent(Intent.ACTION_SEND).apply {
                                                                 type = "text/plain"
                                                                 putExtra(Intent.EXTRA_TEXT, channel)
                                                             }
                                                             startActivity(Intent.createChooser(share, "Поделиться каналом"))
-                                                        }) { Text("Поделиться") }
-                                                        TextButton(onClick = { channelToDelete = channel }) { Text("Удалить") }
+                                                        }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 4.dp)) { Text("Поделиться", style = MaterialTheme.typography.labelSmall) }
+                                                        OutlinedButton(onClick = { channelToDelete = channel }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 4.dp)) { Text("Удалить", style = MaterialTheme.typography.labelSmall) }
+                                                    }
+                                                    OutlinedButton(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        onClick = {
+                                                            expanded = !expanded
+                                                            if (expanded && videos.isEmpty() && !loadingVideos) {
+                                                                loadingVideos = true
+                                                                videoError = ""
+                                                                channelScope.launch {
+                                                                    try {
+                                                                        videos = withContext(Dispatchers.IO) {
+                                                                            DownloadEngine.latest(this@MainActivity, channel)
+                                                                        }
+                                                                        if (videos.isEmpty()) videoError = "Новые видео не найдены"
+                                                                    } catch (e: Exception) {
+                                                                        videoError = e.localizedMessage ?: "Не удалось загрузить список"
+                                                                    } finally { loadingVideos = false }
+                                                                }
+                                                            }
+                                                        }
+                                                    ) { Text(if (expanded) "Скрыть последние видео" else "Последние 5 видео ▾") }
+                                                    if (expanded) {
+                                                        if (loadingVideos) {
+                                                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                                            Text("Получаю последние видео...", color = Muted)
+                                                        }
+                                                        if (videoError.isNotBlank()) Text(videoError, color = Color(0xFFFF9999), style = MaterialTheme.typography.bodySmall)
+                                                        videos.forEach { video ->
+                                                            HorizontalDivider(color = Muted.copy(alpha = 0.2f))
+                                                            Text(video.first, fontWeight = FontWeight.Medium)
+                                                            Button(onClick = {
+                                                                linkInput = video.second
+                                                                page = 2
+                                                            }, modifier = Modifier.fillMaxWidth()) { Text("Выбрать для скачивания") }
+                                                        }
+                                                        if (!loadingVideos) TextButton(onClick = {
+                                                            loadingVideos = true
+                                                            videoError = ""
+                                                            channelScope.launch {
+                                                                try {
+                                                                    videos = withContext(Dispatchers.IO) {
+                                                                        DownloadEngine.latest(this@MainActivity, channel)
+                                                                    }
+                                                                } catch (e: Exception) {
+                                                                    videoError = e.localizedMessage ?: "Не удалось обновить"
+                                                                } finally { loadingVideos = false }
+                                                            }
+                                                        }) { Text("Обновить список") }
                                                     }
                                                 }
                                             }
