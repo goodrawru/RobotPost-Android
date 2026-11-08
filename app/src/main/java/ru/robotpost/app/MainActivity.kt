@@ -196,7 +196,20 @@ class MainActivity : ComponentActivity() {
                     inspectedTitle = ""
                     diagnostics = ""
                     inspectStatus = ""
-                    if (!linkInput.trim().startsWith("https://")) return@LaunchedEffect
+                    val inputUrl = linkInput.trim()
+                    if (!inputUrl.startsWith("https://")) return@LaunchedEffect
+                    val inputUri = Uri.parse(inputUrl)
+                    val playlistLink = inputUri.host?.lowercase() in listOf(
+                        "youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"
+                    ) && (inputUri.path == "/playlist" || (
+                        inputUri.getQueryParameter("list") != null &&
+                        inputUri.getQueryParameter("v").isNullOrBlank()
+                    ))
+                    if (playlistLink) {
+                        playlistUrl = inputUrl
+                        inspectStatus = "Это плейлист. Открой раздел «Импорт плейлиста YouTube» ниже, чтобы выбрать видео."
+                        return@LaunchedEffect
+                    }
                     delay(700)
                     inspecting = true
                     inspectStatus = "Проверка..."
