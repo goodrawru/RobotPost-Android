@@ -76,6 +76,9 @@ class DownloadForegroundService : Service() {
         if (Build.VERSION.SDK_INT >= 29)
             startForeground(ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         else startForeground(ID, notification)
+        getSharedPreferences("robotpost", Context.MODE_PRIVATE).edit()
+            .putBoolean("queueWasRunning", true)
+            .putString("queueServiceStatus", "Подготовка очереди...").commit()
         worker = scope.launch { processQueue() }
         return START_NOT_STICKY
     }
@@ -84,7 +87,6 @@ class DownloadForegroundService : Service() {
         val prefs = getSharedPreferences("robotpost", Context.MODE_PRIVATE)
         var completed = 0
         var failed = 0
-        prefs.edit().putBoolean("queueWasRunning", true).commit()
         try {
             while (!stopping) {
                 val pending = prefs.getString("pendingQueue", "").orEmpty().lines().filter { it.isNotBlank() }
@@ -114,6 +116,7 @@ class DownloadForegroundService : Service() {
                 } catch (e: Exception) {
                     if (stopping) break
                     failed++
+                    status("Ошибка: " + DownloadEngine.readableError(e))
                     val failedLinks = prefs.getString("failedQueue", "").orEmpty().lines().filter { it.isNotBlank() }
                     val reasons = runCatching { JSONObject(prefs.getString("failureReasons", "{}")) }.getOrDefault(JSONObject())
                     reasons.put(url, DownloadEngine.readableError(e))
