@@ -109,7 +109,8 @@ class DownloadForegroundService : Service() {
                     val saved = withContext(Dispatchers.IO) {
                         DownloadEngine.download(this@DownloadForegroundService, url, Uri.parse(root), selected.getString("id"),
                             onTemp = { activeTemp = it },
-                            onProgress = { progress -> status(progress) })
+                            onProgress = { progress -> status(progress) },
+                            includeDescription = prefs.getBoolean("includeDescription", true))
                     }
                     DownloadHistory.add(this@DownloadForegroundService, saved, url)
                     completed++
