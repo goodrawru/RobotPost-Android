@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application android:label="RobotPost" android:theme="@style/RobotPostTheme" android:icon="@drawable/robotpost_icon" android:roundIcon="@drawable/robotpost_icon" android:usesCleartextTraffic="false">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
