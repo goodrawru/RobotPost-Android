@@ -51,7 +51,7 @@ object DownloadEngine {
     fun inspect(context: Context, url: String): JSONObject =
         JSONObject(python(context).getModule("downloader").callAttr("inspect_video", url).toString())
 
-    fun download(context: Context, url: String, root: Uri, formatId: String, onTemp: (File) -> Unit = {}, onProgress: (String) -> Unit = {}, includeDescription: Boolean = true, videoOnly: Boolean = false, playlistName: String = "", playlistIndex: Int = 0): String {
+    fun download(context: Context, url: String, root: Uri, formatId: String, onTemp: (File) -> Unit = {}, onProgress: (String) -> Unit = {}, includeDescription: Boolean = true, videoOnly: Boolean = false, playlistName: String = "", playlistIndex: Int = 0, saveMode: String = "full"): String {
         val temp = File(context.cacheDir, "robotpost_" + UUID.randomUUID().toString()).apply { mkdirs() }
         onTemp(temp)
         try {
@@ -87,7 +87,7 @@ object DownloadEngine {
                 require(video != null && audio != null) { "Не хватает потоков для объединения" }
                 video = Mp4Muxer.combine(video, audio, File(temp, "merged.mp4"))
             }
-            if (!videoOnly && playlistName.isBlank() && video != null && audio == null) {
+            if (!videoOnly && playlistName.isBlank() && saveMode != "video_description" && saveMode != "video" && video != null && audio == null) {
                 audio = AudioExtractor.extract(video, File(temp, "audio.m4a"))
             }
             val stamp = info.optString("date")
@@ -102,15 +102,18 @@ object DownloadEngine {
                     playlistIndex, Uri.fromFile(video)
                 )
             }
+            val exportVideo = if (saveMode == "audio") null else video
+            val exportAudio = if (saveMode == "video" || saveMode == "video_description") null else audio
+            require(exportVideo != null || exportAudio != null) { "Выбранный формат не содержит нужного медиапотока" }
             return ArchiveExporter.export(
                 context, root,
                 info.optString("channel", "YouTube"), info.optString("title", "Видео"),
                 date, cleanDescription(info.optString("description", "")),
-                video?.let { Uri.fromFile(it) },
-                audio?.let { Uri.fromFile(it) },
+                exportVideo?.let { Uri.fromFile(it) },
+                exportAudio?.let { Uri.fromFile(it) },
                 "audio.m4a",
-                includeDescription,
-                videoOnly
+                includeDescription && saveMode != "video" && saveMode != "audio",
+                videoOnly || saveMode == "video" || saveMode == "video_description"
             )
         } finally {
             temp.listFiles()?.forEach { it.delete() }
