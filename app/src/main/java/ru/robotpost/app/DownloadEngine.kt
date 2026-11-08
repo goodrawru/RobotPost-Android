@@ -113,7 +113,7 @@ object DownloadEngine {
                 exportAudio?.let { Uri.fromFile(it) },
                 "audio.m4a",
                 includeDescription && saveMode != "video" && saveMode != "audio",
-                videoOnly || saveMode == "video" || saveMode == "video_description"
+                videoOnly || saveMode == "video"
             )
         } finally {
             temp.listFiles()?.forEach { it.delete() }
