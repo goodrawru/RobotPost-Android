@@ -977,7 +977,48 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                     if (history.isEmpty()) item { Text("Сохранений пока нет. Новые комплекты появятся здесь.", color = Muted) }
-                                    items(history) { entry ->
+                                    items(history.filter { it.optString("playlist").isNotBlank() }
+                                        .groupBy { it.optString("playlist") }.toList()) { (playlist, entries) ->
+                                        Surface(color = Panel, shape = Shape) {
+                                            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Column(Modifier.weight(1f)) {
+                                                        Text(playlist, fontWeight = FontWeight.SemiBold)
+                                                        Text("${entries.size} видео · MP4", color = Muted,
+                                                            style = MaterialTheme.typography.bodySmall)
+                                                    }
+                                                    TextButton(onClick = {
+                                                        expandedArchive = if (playlist in expandedArchive)
+                                                            expandedArchive - playlist else expandedArchive + playlist
+                                                    }) { Text(if (playlist in expandedArchive) "Свернуть ▲" else "Открыть ▼") }
+                                                }
+                                                if (playlist in expandedArchive) {
+                                                    val root = prefs.getString("archiveRoot", "").orEmpty()
+                                                    val files = remember(root, playlist, history.size) {
+                                                        runCatching {
+                                                            if (root.isBlank()) emptyMap()
+                                                            else ArchiveBrowser.playlistFiles(this@MainActivity, Uri.parse(root), playlist)
+                                                        }.getOrDefault(emptyMap())
+                                                    }
+                                                    if (files.isEmpty()) Text("MP4 не найдены в выбранном архиве", color = Muted)
+                                                    files.toSortedMap().forEach { (name, uri) ->
+                                                        TextButton(onClick = {
+                                                            try {
+                                                                startActivity(Intent(Intent.ACTION_VIEW).apply {
+                                                                    setDataAndType(uri, "video/mp4")
+                                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                                })
+                                                            } catch (e: Exception) {
+                                                                android.widget.Toast.makeText(this@MainActivity,
+                                                                    DownloadEngine.readableError(e), android.widget.Toast.LENGTH_LONG).show()
+                                                            }
+                                                        }) { Text(name, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    items(history.filter { it.optString("playlist").isBlank() }) { entry ->
                                         Surface(color = Panel, shape = Shape) {
                                             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
