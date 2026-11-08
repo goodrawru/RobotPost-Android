@@ -140,11 +140,11 @@ class DownloadForegroundService : Service() {
                     reasons.put(url, DownloadEngine.readableError(e))
                     prefs.edit()
                         .putString("failedQueue", (failedLinks + url).distinct().joinToString("\n"))
-                        .putString("failureReasons", reasons.toString()).apply()
+                        .putString("failureReasons", reasons.toString()).commit()
                 } finally {
                     activeTemp = null
                 }
-                // Remove only after successful export or recorded failure.
+                // Persist failure metadata before dequeuing; a crash must not silently lose a URL.
                 prefs.edit().putString("pendingQueue", pending.drop(1).joinToString("\n")).commit()
             }
         } finally {
