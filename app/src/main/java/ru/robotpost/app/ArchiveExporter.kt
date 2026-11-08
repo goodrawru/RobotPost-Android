@@ -62,6 +62,26 @@ object ArchiveExporter {
         }
     }
 
+    /** Save a single playable MP4 directly inside a shared playlist folder. */
+    fun exportPlaylistVideo(context: Context, tree: Uri, playlist: String,
+                            title: String, index: Int, video: Uri): String {
+        val resolver = context.contentResolver
+        val root = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        val app = folder(resolver, root, "RobotPost")
+        val playlistFolder = folder(resolver, app, safeName(playlist, "Плейлист"))
+        val prefix = index.toString().padStart(3, '0')
+        val base = "$prefix — ${safeName(title, "Видео")}"
+        var filename = "$base.mp4"
+        var suffix = 2
+        while (exists(resolver, playlistFolder, filename)) {
+            filename = "$base ($suffix).mp4"
+            suffix++
+            require(suffix < 10000) { "Слишком много совпадающих имён" }
+        }
+        copy(resolver, playlistFolder, filename, "video/mp4", video)
+        return filename
+    }
+
     fun export(
         context: Context,
         tree: Uri,
