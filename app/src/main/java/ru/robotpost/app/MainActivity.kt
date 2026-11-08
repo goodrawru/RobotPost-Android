@@ -4,6 +4,13 @@ import android.content.Context
 import android.os.Bundle
 import android.content.Intent
 import android.net.Uri
+import android.content.ContentResolver
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -74,6 +81,30 @@ class MainActivity : ComponentActivity() {
                 recreate()
             } catch (e: Exception) {
                 android.widget.Toast.makeText(this, "Ошибка восстановления: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+        var chosenRoot by mutableStateOf(prefs.getString("archiveRoot", "").orEmpty())
+        var chosenVideo by mutableStateOf("")
+        var chosenAudio by mutableStateOf("")
+        val chooseRoot = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+            if (uri != null) try {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                chosenRoot = uri.toString()
+                prefs.edit().putString("archiveRoot", chosenRoot).apply()
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(this, "Ошибка выбора папки: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+        val chooseVideo = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            if (uri != null) {
+                chosenVideo = uri.toString()
+                runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            }
+        }
+        val chooseAudio = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            if (uri != null) {
+                chosenAudio = uri.toString()
+                runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             }
         }
         window.statusBarColor = android.graphics.Color.rgb(12, 16, 25)
@@ -303,61 +334,76 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                             3 -> {
-                                val cleaned = remember(description) { cleanDescription(description) }
+                                var packageChannel by remember { mutableStateOf("") }
+                                var packageTitle by remember { mutableStateOf("") }
+                                var packageDate by remember { mutableStateOf(SimpleDateFormat("dd.MM.yy", Locale.ROOT).format(Date())) }
+                                var packageDescription by remember { mutableStateOf(description) }
+                                var busy by remember { mutableStateOf(false) }
+                                var result by remember { mutableStateOf("") }
+                                val scope = rememberCoroutineScope()
                                 LazyColumn(
                                     modifier = Modifier.fillMaxSize(),
                                     contentPadding = PaddingValues(18.dp),
                                     verticalArrangement = Arrangement.spacedBy(14.dp)
                                 ) {
-                                    item { Text("Редактор описания", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-                                    item { Text("Вставь описание ролика. Удаляются типовые рекламные строки; таймкоды сохраняются. Проверь результат перед публикацией.", color = Muted) }
-                                    item { Text("Исходный текст: ${description.length} символов · После очистки: ${cleaned.length} · Удалено строк: ${description.lines().size - cleaned.lines().size}", color = Mint, style = MaterialTheme.typography.bodySmall) }
-                                    item {
-                                        OutlinedTextField(
-                                            value = description,
-                                            onValueChange = { description = it; prefs.edit().putString("description", it).apply() },
-                                            label = { Text("Исходное описание") },
-                                            minLines = 5, modifier = Modifier.fillMaxWidth()
-                                        )
-                                    }
+                                    item { SectionTitle("Архив материалов") }
+                                    item { Text("Комплект сохраняется в RobotPost / Имя канала / ДД.ММ.ГГ Название видео.", color = Muted) }
                                     item {
                                         Surface(color = Panel, shape = Shape) {
                                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                                Text("Результат очистки", fontWeight = FontWeight.Bold)
-                                                Text(cleaned.ifBlank { "Здесь появится очищенный текст." }, color = if(cleaned.isBlank()) Muted else Color.White)
-                                                Button(
-                                                    enabled = cleaned.isNotBlank(),
-                                                    onClick = {
-                                                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("RobotPost", cleaned))
-                                                    }, modifier = Modifier.fillMaxWidth()
-                                                ) { Text("Копировать описание") }
-                                                OutlinedButton(
-                                                    onClick = {
-                                                        pendingText = cleaned
-                                                        saveText.launch("description.txt")
-                                                    },
-                                                    enabled = cleaned.isNotBlank(),
-                                                    modifier = Modifier.fillMaxWidth()
-                                                ) { Text("Сохранить TXT на телефон") }
-                                                OutlinedButton(
-                                                    onClick = {
-                                                        val share = Intent(Intent.ACTION_SEND).apply {
-                                                            type = "text/plain"
-                                                            putExtra(Intent.EXTRA_TEXT, cleaned)
-                                                        }
-                                                        startActivity(Intent.createChooser(share, "Поделиться описанием"))
-                                                    },
-                                                    enabled = cleaned.isNotBlank(),
-                                                    modifier = Modifier.fillMaxWidth()
-                                                ) { Text("Поделиться текстом") }
-                                                OutlinedButton(onClick = {
-                                                    description = cleaned
-                                                    prefs.edit().putString("description", cleaned).apply()
-                                                }, enabled = cleaned.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Перенести результат в редактор") }
+                                                Text("Папка для сохранения", fontWeight = FontWeight.Bold)
+                                                Text(if (chosenRoot.isBlank()) "Папка не выбрана" else "Папка выбрана. Доступ сохранён.", color = Muted)
+                                                OutlinedButton(onClick = { chooseRoot.launch(null) }, modifier = Modifier.fillMaxWidth()) { Text("Выбрать папку") }
                                             }
                                         }
                                     }
+                                    item { OutlinedTextField(value = packageChannel, onValueChange = { packageChannel = it }, label = { Text("Имя канала") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+                                    item { OutlinedTextField(value = packageTitle, onValueChange = { packageTitle = it }, label = { Text("Название видео") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+                                    item { OutlinedTextField(value = packageDate, onValueChange = { packageDate = it }, label = { Text("Дата публикации ДД.ММ.ГГ") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+                                    item {
+                                        Surface(color = Panel, shape = Shape) {
+                                            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                                Text("Медиафайлы", fontWeight = FontWeight.Bold)
+                                                Text(if (chosenVideo.isBlank()) "Видео не выбрано" else "Видео выбрано", color = Muted)
+                                                OutlinedButton(onClick = { chooseVideo.launch(arrayOf("video/mp4")) }, modifier = Modifier.fillMaxWidth()) { Text("Выбрать MP4") }
+                                                Text(if (chosenAudio.isBlank()) "Аудио не выбрано" else "Аудио выбрано", color = Muted)
+                                                OutlinedButton(onClick = { chooseAudio.launch(arrayOf("audio/mpeg", "audio/mp3")) }, modifier = Modifier.fillMaxWidth()) { Text("Выбрать MP3") }
+                                            }
+                                        }
+                                    }
+                                    item {
+                                        OutlinedTextField(value = packageDescription, onValueChange = { packageDescription = it },
+                                            label = { Text("Описание видео") }, modifier = Modifier.fillMaxWidth(), minLines = 4)
+                                    }
+                                    item {
+                                        Button(
+                                            enabled = !busy && chosenRoot.isNotBlank() && packageChannel.isNotBlank() &&
+                                                packageTitle.isNotBlank() && ArchiveExporter.validDate(packageDate) &&
+                                                (chosenVideo.isNotBlank() || chosenAudio.isNotBlank()),
+                                            onClick = {
+                                                busy = true
+                                                result = "Сохранение..."
+                                                scope.launch {
+                                                    result = try {
+                                                        val saved = withContext(Dispatchers.IO) {
+                                                            ArchiveExporter.export(
+                                                                this@MainActivity, Uri.parse(chosenRoot),
+                                                                packageChannel, packageTitle, packageDate,
+                                                                cleanDescription(packageDescription),
+                                                                chosenVideo.takeIf { it.isNotBlank() }?.let(Uri::parse),
+                                                                chosenAudio.takeIf { it.isNotBlank() }?.let(Uri::parse)
+                                                            )
+                                                        }
+                                                        "Сохранено: $saved"
+                                                    } catch (e: Exception) { "Ошибка: ${e.localizedMessage}" }
+                                                    busy = false
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) { Text(if (busy) "Сохраняем..." else "Сохранить комплект") }
+                                    }
+                                    if (result.isNotBlank()) item { Text(result, color = if (result.startsWith("Ошибка")) Color(0xFFFF9999) else Mint) }
+                                    item { Text("Для текущей версии файлы выбираются вручную. Автоматическая загрузка с YouTube ещё не подключена.", color = Muted) }
                                 }
                             }
                             4 -> LazyColumn(
