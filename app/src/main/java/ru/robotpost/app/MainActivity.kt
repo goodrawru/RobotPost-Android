@@ -160,6 +160,8 @@ class MainActivity : ComponentActivity() {
                 var playlistVideoOnly by remember { mutableStateOf(prefs.getBoolean("playlistVideoOnly", false)) }
                 var queueVideoOnly by remember { mutableStateOf(prefs.getBoolean("queueVideoOnly", false)) }
                 var expandedArchive by remember { mutableStateOf(setOf<String>()) }
+                var queueDetailsExpanded by remember { mutableStateOf(false) }
+                var failedDetailsExpanded by remember { mutableStateOf(false) }
                 var linkInput by remember { mutableStateOf(if (intent?.action == Intent.ACTION_SEND) (intent.getStringExtra(Intent.EXTRA_TEXT) ?: "") else "") }
                 var linkError by remember { mutableStateOf("") }
                 var downloadBusy by remember { mutableStateOf(false) }
@@ -719,7 +721,16 @@ class MainActivity : ComponentActivity() {
                                 item {
                                     Surface(color = Panel, shape = Shape) {
                                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("Очередь подготовки (${pendingQueue.size})", fontWeight = FontWeight.Bold)
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Column(Modifier.weight(1f)) {
+                                                    Text("Очередь загрузок", fontWeight = FontWeight.Bold)
+                                                    Text("${pendingQueue.size} ожидают · ${failedQueue.size} ошибок",
+                                                        color = Muted, style = MaterialTheme.typography.bodySmall)
+                                                }
+                                                TextButton(onClick = { queueDetailsExpanded = !queueDetailsExpanded }) {
+                                                    Text(if (queueDetailsExpanded) "Скрыть список ▲" else "Показать список ▼")
+                                                }
+                                            }
                                             Text("Единое качество для всех роликов очереди (максимум 720p). При ошибке ролик пропускается и сохраняется для повторной попытки.", color = Muted, style = MaterialTheme.typography.bodySmall)
                                             Text("Режим сохранения", fontWeight = FontWeight.SemiBold)
                                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -806,11 +817,15 @@ class MainActivity : ComponentActivity() {
                                                             .putString("failedQueue", "").apply()
                                                     }
                                                 ) { Text("Повторить неудачные") }
-                                                failedQueue.take(10).forEach { failed ->
+                                                TextButton(onClick = { failedDetailsExpanded = !failedDetailsExpanded }) {
+                                                    Text(if (failedDetailsExpanded) "Скрыть ошибки ▲" else "Показать ошибки ▼")
+                                                }
+                                                if (failedDetailsExpanded) failedQueue.take(10).forEach { failed ->
                                                     Text(failed.substringBefore("?"), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                                     Text(failureReasons[failed] ?: "Ошибка загрузки", color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2)
                                                 }
                                             }
+                                            if (queueDetailsExpanded) {
                                             if (pendingQueue.isNotEmpty()) {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     Text("Выбрано: ${queueSelected.count { it in pendingQueue }}", modifier = Modifier.weight(1f))
