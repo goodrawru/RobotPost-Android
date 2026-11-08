@@ -132,6 +132,7 @@ class MainActivity : ComponentActivity() {
                 var inspectStatus by remember { mutableStateOf("") }
                 var formatChoices by remember { mutableStateOf(listOf<Pair<String, String>>()) }
                 var selectedFormat by remember { mutableStateOf("") }
+                var showFormatPicker by remember { mutableStateOf(false) }
                 var inspectedTitle by remember { mutableStateOf("") }
                 var diagnostics by remember { mutableStateOf("") }
                 var showDiagnostics by remember { mutableStateOf(false) }
@@ -183,6 +184,7 @@ class MainActivity : ComponentActivity() {
                             fmt.getString("id") to fmt.getString("label")
                         }
                         selectedFormat = formatChoices.firstOrNull()?.first.orEmpty()
+                        showFormatPicker = false
                         inspectStatus = if (formatChoices.isEmpty()) {
                             "MP4 со звуком не найден. Для раздельных потоков потребуется объединение видео и аудио."
                         } else "Найдено форматов: " + formatChoices.size
@@ -422,10 +424,43 @@ class MainActivity : ComponentActivity() {
                                                     }) { Text("Копировать диагностику") }
                                                 }
                                             }
-                                            formatChoices.forEach { choice ->
-                                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { selectedFormat = choice.first }) {
-                                                    RadioButton(selected = selectedFormat == choice.first, onClick = { selectedFormat = choice.first })
-                                                    Text(choice.second, modifier = Modifier.weight(1f))
+                                            if (formatChoices.isNotEmpty()) {
+                                                OutlinedButton(
+                                                    onClick = { showFormatPicker = true },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Text("Качество: " + (formatChoices.firstOrNull { it.first == selectedFormat }?.second ?: "Выбрать") + " ▾")
+                                                }
+                                                if (showFormatPicker) {
+                                                    AlertDialog(
+                                                        onDismissRequest = { showFormatPicker = false },
+                                                        title = { Text("Выбери формат (до 720p)") },
+                                                        text = {
+                                                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                                formatChoices.forEach { choice ->
+                                                                    Row(
+                                                                        verticalAlignment = Alignment.CenterVertically,
+                                                                        modifier = Modifier.fillMaxWidth().clickable {
+                                                                            selectedFormat = choice.first
+                                                                            showFormatPicker = false
+                                                                        }
+                                                                    ) {
+                                                                        RadioButton(
+                                                                            selected = selectedFormat == choice.first,
+                                                                            onClick = {
+                                                                                selectedFormat = choice.first
+                                                                                showFormatPicker = false
+                                                                            }
+                                                                        )
+                                                                        Text(choice.second, modifier = Modifier.weight(1f))
+                                                                    }
+                                                                }
+                                                            }
+                                                        },
+                                                        confirmButton = {
+                                                            TextButton(onClick = { showFormatPicker = false }) { Text("Закрыть") }
+                                                        }
+                                                    )
                                                 }
                                             }
                                             OutlinedButton(onClick = { chooseRoot.launch(null) }, modifier = Modifier.fillMaxWidth()) {
