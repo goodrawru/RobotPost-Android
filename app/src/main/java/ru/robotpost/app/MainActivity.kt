@@ -138,19 +138,6 @@ class MainActivity : ComponentActivity() {
                     if (prefs.getBoolean("queueWasRunning", false)) "Предыдущая загрузка прервана. Очередь сохранена для продолжения."
                     else ""
                 ) }
-                LaunchedEffect(Unit) {
-                    while (true) {
-                        val running = prefs.getBoolean("queueWasRunning", false)
-                        queueRunning = running
-                        if (running || prefs.getString("queueServiceStatus", "").orEmpty().isNotBlank()) {
-                            queueStatus = prefs.getString("queueServiceStatus", "").orEmpty()
-                        }
-                        pendingQueue = prefs.getString("pendingQueue", "").orEmpty().lines().filter { it.isNotBlank() }
-                        failedQueue = prefs.getString("failedQueue", "").orEmpty().lines().filter { it.isNotBlank() }
-                        history = DownloadHistory.list(this@MainActivity)
-                        delay(1000)
-                    }
-                }
                 var playlistUrl by remember { mutableStateOf("") }
                 var playlistBusy by remember { mutableStateOf(false) }
                 var playlistStatus by remember { mutableStateOf("") }
@@ -164,6 +151,20 @@ class MainActivity : ComponentActivity() {
                 var downloadBusy by remember { mutableStateOf(false) }
                 var activeDownloadDirectory by remember { mutableStateOf<java.io.File?>(null) }
                 var history by remember { mutableStateOf(DownloadHistory.list(this@MainActivity)) }
+                LaunchedEffect(Unit) {
+                    while (true) {
+                        val running = prefs.getBoolean("queueWasRunning", false)
+                        queueRunning = running
+                        if (running || prefs.getString("queueServiceStatus", "").orEmpty().isNotBlank()) {
+                            queueStatus = prefs.getString("queueServiceStatus", "").orEmpty()
+                        }
+                        pendingQueue = prefs.getString("pendingQueue", "").orEmpty().lines().filter { it.isNotBlank() }
+                        failedQueue = prefs.getString("failedQueue", "").orEmpty().lines().filter { it.isNotBlank() }
+                        history = DownloadHistory.list(this@MainActivity)
+                        delay(1000)
+                    }
+                }
+
                 var clearHistoryConfirm by remember { mutableStateOf(false) }
                 var downloadStatus by remember { mutableStateOf("") }
                 var inspectStatus by remember { mutableStateOf("") }
