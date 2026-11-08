@@ -131,6 +131,10 @@ class MainActivity : ComponentActivity() {
                 var playlistUrl by remember { mutableStateOf("") }
                 var playlistBusy by remember { mutableStateOf(false) }
                 var playlistStatus by remember { mutableStateOf("") }
+                var playlistPreview by remember { mutableStateOf(listOf<Pair<String, String>>()) }
+                var playlistSelected by remember { mutableStateOf(setOf<String>()) }
+                var playlistPreviewTitle by remember { mutableStateOf("") }
+                var showPlaylistPreview by remember { mutableStateOf(false) }
                 var queueQuality by remember { mutableStateOf(prefs.getString("queueQuality", "720") ?: "720") }
                 var linkInput by remember { mutableStateOf(if (intent?.action == Intent.ACTION_SEND) (intent.getStringExtra(Intent.EXTRA_TEXT) ?: "") else "") }
                 var linkError by remember { mutableStateOf("") }
@@ -571,16 +575,15 @@ class MainActivity : ComponentActivity() {
                                                                 DownloadEngine.playlist(this@MainActivity, playlistUrl.trim())
                                                             }
                                                             val entries = result.getJSONArray("entries")
-                                                            val existing = pendingQueue.toMutableSet()
-                                                            var added = 0
-                                                            for (index in 0 until entries.length()) {
-                                                                val url = entries.getJSONObject(index).getString("url")
-                                                                if (existing.add(url)) added++
+                                                            playlistPreview = (0 until entries.length()).map { index ->
+                                                                val entry = entries.getJSONObject(index)
+                                                                entry.optString("title", "Видео") to entry.getString("url")
                                                             }
-                                                            pendingQueue = existing.toList()
-                                                            prefs.edit().putString("pendingQueue", pendingQueue.joinToString("\n")).apply()
-                                                            playlistStatus = "Добавлено: $added · " + result.optString("title")
-                                                            if (result.optBoolean("limited")) playlistStatus += " (первые 100 видео)"
+                                                            playlistSelected = playlistPreview.map { it.second }.toSet()
+                                                            playlistPreviewTitle = result.optString("title", "Плейлист")
+                                                            showPlaylistPreview = true
+                                                            playlistStatus = "Найдено: ${playlistPreview.size}" +
+                                                                if (result.optBoolean("limited")) " (первые 100)" else ""
                                                         } catch (e: Exception) {
                                                             playlistStatus = "Ошибка плейлиста: " + (e.localizedMessage ?: "Не удалось прочитать")
                                                         } finally {
@@ -588,7 +591,50 @@ class MainActivity : ComponentActivity() {
                                                         }
                                                     }
                                                 }
-                                            ) { Text(if (playlistBusy) "Читаю плейлист..." else "Добавить плейлист в очередь") }
+                                            ) { Text(if (playlistBusy) "Читаю плейлист..." else "Посмотреть видео плейлиста") }
+                                            if (showPlaylistPreview) {
+                                                AlertDialog(
+                                                    onDismissRequest = { showPlaylistPreview = false },
+                                                    title = { Text(playlistPreviewTitle) },
+                                                    text = {
+                                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                            Text("Выбрано: ${playlistSelected.size} из ${playlistPreview.size}")
+                                                            Row {
+                                                                TextButton(onClick = { playlistSelected = playlistPreview.map { it.second }.toSet() }) { Text("Все") }
+                                                                TextButton(onClick = { playlistSelected = emptySet() }) { Text("Снять выбор") }
+                                                            }
+                                                            LazyColumn(modifier = Modifier.heightIn(max = 380.dp)) {
+                                                                items(playlistPreview) { entry ->
+                                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                                        Checkbox(
+                                                                            checked = entry.second in playlistSelected,
+                                                                            onCheckedChange = { checked ->
+                                                                                playlistSelected = if (checked) playlistSelected + entry.second
+                                                                                    else playlistSelected - entry.second
+                                                                            }
+                                                                        )
+                                                                        Text(entry.first, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    confirmButton = {
+                                                        TextButton(onClick = {
+                                                            val existing = pendingQueue.toMutableSet()
+                                                            val before = existing.size
+                                                            playlistPreview.forEach { entry ->
+                                                                if (entry.second in playlistSelected) existing.add(entry.second)
+                                                            }
+                                                            pendingQueue = existing.toList()
+                                                            prefs.edit().putString("pendingQueue", pendingQueue.joinToString("\n")).apply()
+                                                            playlistStatus = "Добавлено в очередь: ${existing.size - before}"
+                                                            showPlaylistPreview = false
+                                                        }, enabled = playlistSelected.isNotEmpty()) { Text("Добавить выбранные") }
+                                                    },
+                                                    dismissButton = { TextButton(onClick = { showPlaylistPreview = false }) { Text("Отмена") } }
+                                                )
+                                            }
                                             if (playlistStatus.isNotBlank()) Text(playlistStatus)
                                         }
                                     }
