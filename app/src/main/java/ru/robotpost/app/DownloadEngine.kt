@@ -17,6 +17,15 @@ object DownloadEngine {
         return Python.getInstance()
     }
 
+    fun latest(context: Context, channelUrl: String): List<Pair<String, String>> {
+        val json = org.json.JSONArray(python(context).getModule("downloader")
+            .callAttr("latest_channel_videos", channelUrl).toString())
+        return (0 until json.length()).map { i ->
+            val item = json.getJSONObject(i)
+            item.optString("title", "Видео") to item.getString("url")
+        }
+    }
+
     fun inspect(context: Context, url: String): JSONObject =
         JSONObject(python(context).getModule("downloader").callAttr("inspect_video", url).toString())
 
