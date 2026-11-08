@@ -157,6 +157,7 @@ class MainActivity : ComponentActivity() {
                 var showPlaylistPreview by remember { mutableStateOf(false) }
                 var queueQuality by remember { mutableStateOf(prefs.getString("queueQuality", "720") ?: "720") }
                 var includeDescription by remember { mutableStateOf(prefs.getBoolean("includeDescription", true)) }
+                var singleSaveMode by remember { mutableStateOf(prefs.getString("singleSaveMode", "full") ?: "full") }
                 var playlistVideoOnly by remember { mutableStateOf(prefs.getBoolean("playlistVideoOnly", false)) }
                 var queueVideoOnly by remember { mutableStateOf(prefs.getBoolean("queueVideoOnly", false)) }
                 var expandedArchive by remember { mutableStateOf(setOf<String>()) }
@@ -538,6 +539,25 @@ class MainActivity : ComponentActivity() {
                                                     )
                                                 }
                                             }
+                                            Text("Режим сохранения", fontWeight = FontWeight.SemiBold)
+                                            listOf(
+                                                "full" to "Полный комплект: MP4 + M4A + TXT",
+                                                "video" to "Только видео: MP4 со звуком",
+                                                "video_description" to "Видео + описание: MP4 + TXT",
+                                                "audio" to "Только аудио: M4A"
+                                            ).forEach { (mode, label) ->
+                                                Row(verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.fillMaxWidth().clickable {
+                                                        singleSaveMode = mode
+                                                        prefs.edit().putString("singleSaveMode", mode).apply()
+                                                    }) {
+                                                    RadioButton(selected = singleSaveMode == mode, onClick = {
+                                                        singleSaveMode = mode
+                                                        prefs.edit().putString("singleSaveMode", mode).apply()
+                                                    })
+                                                    Text(label)
+                                                }
+                                            }
                                             OutlinedButton(onClick = { chooseRoot.launch(null) }, modifier = Modifier.fillMaxWidth()) {
                                                 Text(if (chosenRoot.isBlank()) "Выбрать папку архива" else "Изменить папку архива")
                                             }
@@ -554,7 +574,8 @@ class MainActivity : ComponentActivity() {
                                                                 DownloadEngine.download(this@MainActivity, url, Uri.parse(chosenRoot), format,
                                                                     onTemp = { activeDownloadDirectory = it },
                                                                     onProgress = { progress -> runOnUiThread { downloadStatus = progress } },
-                                                                    includeDescription = includeDescription
+                                                                    includeDescription = includeDescription,
+                                                                    saveMode = singleSaveMode
                                                                 )
                                                             }
                                                             DownloadHistory.add(this@MainActivity, result, url)
