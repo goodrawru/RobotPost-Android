@@ -128,7 +128,14 @@ class MainActivity : ComponentActivity() {
                 var queueStopRequested by remember { mutableStateOf(false) }
                 var queueSelected by remember { mutableStateOf(setOf<String>()) }
                 var failedQueue by remember { mutableStateOf(prefs.getString("failedQueue", "")!!.lines().filter { it.isNotBlank() }) }
-                var queueStatus by remember { mutableStateOf("") }
+                var queueStatus by remember { mutableStateOf(
+                    if (prefs.getBoolean("queueWasRunning", false)) "Предыдущая загрузка прервана. Очередь сохранена для продолжения."
+                    else ""
+                ) }
+                LaunchedEffect(Unit) {
+                    if (prefs.getBoolean("queueWasRunning", false))
+                        prefs.edit().putBoolean("queueWasRunning", false).apply()
+                }
                 var playlistUrl by remember { mutableStateOf("") }
                 var playlistBusy by remember { mutableStateOf(false) }
                 var playlistStatus by remember { mutableStateOf("") }
@@ -664,6 +671,7 @@ class MainActivity : ComponentActivity() {
                                                 onClick = {
                                                     queueStopRequested = false
                                                     queueRunning = true
+                                                    prefs.edit().putBoolean("queueWasRunning", true).apply()
                                                     downloadBusy = true
                                                     queueStatus = "Подготовка очереди..."
                                                     downloadScope.launch {
@@ -718,6 +726,7 @@ class MainActivity : ComponentActivity() {
                                                         } finally {
                                                             activeDownloadDirectory = null
                                                             queueRunning = false
+                                                            prefs.edit().putBoolean("queueWasRunning", false).apply()
                                                             downloadBusy = false
                                                         }
                                                     }
