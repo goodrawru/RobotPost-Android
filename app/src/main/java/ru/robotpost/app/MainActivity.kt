@@ -620,10 +620,13 @@ class MainActivity : ComponentActivity() {
                                                 onClick = {
                                                     playlistBusy = true
                                                     playlistStatus = "Получаю список роликов..."
+                                                    val requestedPlaylist = playlistUrl.trim()
                                                     downloadScope.launch {
                                                         try {
                                                             val result = withContext(Dispatchers.IO) {
-                                                                DownloadEngine.playlist(this@MainActivity, playlistUrl.trim())
+                                                                kotlinx.coroutines.withTimeout(45000L) {
+                                                                    DownloadEngine.playlist(this@MainActivity, requestedPlaylist)
+                                                                }
                                                             }
                                                             val entries = result.getJSONArray("entries")
                                                             playlistPreview = (0 until entries.length()).map { index ->
@@ -636,7 +639,9 @@ class MainActivity : ComponentActivity() {
                                                             playlistStatus = "Найдено: ${playlistPreview.size}" +
                                                                 if (result.optBoolean("limited")) " (первые 100)" else ""
                                                         } catch (e: Exception) {
-                                                            playlistStatus = "Ошибка плейлиста: " + (e.localizedMessage ?: "Не удалось прочитать")
+                                                            playlistStatus = if (e is kotlinx.coroutines.TimeoutCancellationException)
+                                                                "Время ожидания плейлиста истекло. Проверьте интернет и VPN, затем повторите."
+                                                            else "Ошибка плейлиста: " + DownloadEngine.readableError(e)
                                                         } finally {
                                                             playlistBusy = false
                                                         }
