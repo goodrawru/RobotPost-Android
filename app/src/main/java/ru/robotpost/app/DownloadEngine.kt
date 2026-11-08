@@ -95,6 +95,13 @@ object DownloadEngine {
                 "${stamp.substring(6, 8)}.${stamp.substring(4, 6)}.${stamp.substring(2, 4)}"
             else SimpleDateFormat("dd.MM.yy", Locale.ROOT).format(Date())
             if (File(temp, "cancel.flag").exists()) error("Загрузка отменена пользователем")
+            if (playlistName.isNotBlank()) {
+                require(video != null) { "Для режима только видео нужен видеопоток" }
+                return ArchiveExporter.exportPlaylistVideo(
+                    context, root, playlistName, info.optString("title", "Видео"),
+                    playlistIndex, Uri.fromFile(video)
+                )
+            }
             return ArchiveExporter.export(
                 context, root,
                 info.optString("channel", "YouTube"), info.optString("title", "Видео"),
