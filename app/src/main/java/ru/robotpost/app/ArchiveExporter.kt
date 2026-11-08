@@ -72,7 +72,8 @@ object ArchiveExporter {
         video: Uri?,
         audio: Uri?,
         audioFileName: String = "audio.mp3",
-        includeDescription: Boolean = true
+        includeDescription: Boolean = true,
+        videoOnly: Boolean = false
     ): String {
         require(validDate(date)) { "Дата должна быть в формате ДД.ММ.ГГ" }
         require(video != null || audio != null) { "Выбери видео или аудио" }
@@ -93,8 +94,7 @@ object ArchiveExporter {
         try {
             if (video != null) copy(resolver, packageFolder, "video.mp4", "video/mp4", video)
             if (audio != null && !videoOnly) copy(resolver, packageFolder, audioFileName, if (audioFileName.endsWith(".m4a")) "audio/mp4" else "audio/mpeg", audio)
-            if (includeDescription) {
-            if (!videoOnly) {
+            if (includeDescription && !videoOnly) {
             val txt = DocumentsContract.createDocument(resolver, packageFolder, "text/plain", "description.txt")
                 ?: error("Не удалось создать описание")
             resolver.openOutputStream(txt, "w")?.use { it.write(description.toByteArray(Charsets.UTF_8)) }
