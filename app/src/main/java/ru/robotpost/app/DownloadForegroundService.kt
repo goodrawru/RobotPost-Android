@@ -114,8 +114,7 @@ class DownloadForegroundService : Service() {
                         else candidates.filter { it.optInt("height", 0) <= quality.toInt() }
                             .maxWithOrNull(compareBy<JSONObject> { it.optInt("height", 0) }
                                 .thenBy { if (it.optString("kind") == "single") 1 else 0 })
-                            ?: candidates.minWithOrNull(compareBy<JSONObject> { it.optInt("height", 0) }
-                                .thenByDescending { if (it.optString("kind") == "single") 1 else 0 })
+                            
                     require(selected != null) { "Нет доступных совместимых форматов" }
                     if (quality != "audio" && selected.optInt("height", 0) != quality.toInt())
                         status("Доступно ${selected.optInt("height", 0)}p вместо ${quality}p")
