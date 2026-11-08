@@ -123,6 +123,9 @@ class MainActivity : ComponentActivity() {
                 var savedLinks by remember { mutableStateOf(prefs.getString("savedLinks", "")!!.lines().filter { it.isNotBlank() }) }
                 var linkInput by remember { mutableStateOf(if (intent?.action == Intent.ACTION_SEND) (intent.getStringExtra(Intent.EXTRA_TEXT) ?: "") else "") }
                 var linkError by remember { mutableStateOf("") }
+                var downloadBusy by remember { mutableStateOf(false) }
+                var downloadStatus by remember { mutableStateOf("") }
+                val downloadScope = rememberCoroutineScope()
                 var linkSearch by remember { mutableStateOf("") }
                 var newestFirst by remember { mutableStateOf(true) }
                 var confirmClear by remember { mutableStateOf(false) }
@@ -280,6 +283,38 @@ class MainActivity : ComponentActivity() {
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 item { Text("Список видео", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                                item {
+                                    Surface(color = Panel, shape = Shape) {
+                                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            Text("Скачать MP4", fontWeight = FontWeight.Bold)
+                                            Text("Загрузка ролика со звуком в локальный архив.", color = Muted)
+                                            OutlinedButton(onClick = { chooseRoot.launch(null) }, modifier = Modifier.fillMaxWidth()) {
+                                                Text(if (chosenRoot.isBlank()) "Выбрать папку архива" else "Изменить папку архива")
+                                            }
+                                            Button(
+                                                enabled = !downloadBusy && chosenRoot.isNotBlank() && linkInput.isNotBlank(),
+                                                onClick = {
+                                                    downloadBusy = true
+                                                    downloadStatus = "Скачивание... Оставь приложение открытым."
+                                                    val url = linkInput.trim()
+                                                    downloadScope.launch {
+                                                        downloadStatus = try {
+                                                            val result = withContext(Dispatchers.IO) {
+                                                                DownloadEngine.download(this@MainActivity, url, Uri.parse(chosenRoot))
+                                                            }
+                                                            "Сохранено: " + result
+                                                        } catch (e: Exception) {
+                                                            "Ошибка: " + (e.localizedMessage ?: "Не удалось скачать видео")
+                                                        }
+                                                        downloadBusy = false
+                                                    }
+                                                },
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) { Text(if (downloadBusy) "Скачивается..." else "Скачать видео") }
+                                            if (downloadStatus.isNotBlank()) Text(downloadStatus, color = Mint)
+                                        }
+                                    }
+                                }
                                 item { Text("Ссылки для последующей загрузки. Видео пока не скачиваются.", color = Muted) }
                                 item { OutlinedTextField(value = linkInput, onValueChange = { linkInput = it; linkError = "" }, label = { Text("Ссылка YouTube") }, modifier = Modifier.fillMaxWidth()) }
                                 if (linkError.isNotEmpty()) item { Text(linkError, color = Color(0xFFFF9999)) }
