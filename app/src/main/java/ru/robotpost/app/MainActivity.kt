@@ -675,82 +675,16 @@ class MainActivity : ComponentActivity() {
                                                 enabled = pendingQueue.isNotEmpty() && chosenRoot.isNotBlank() && !downloadBusy && !queueRunning,
                                                 modifier = Modifier.fillMaxWidth(),
                                                 onClick = {
-                                                    queueStopRequested = false
-                                                    queueRunning = true
-                                                    prefs.edit().putBoolean("queueWasRunning", true).apply()
                                                     try {
                                                         androidx.core.content.ContextCompat.startForegroundService(
                                                             this@MainActivity,
                                                             Intent(this@MainActivity, DownloadForegroundService::class.java)
                                                                 .setAction(DownloadForegroundService.ACTION_START)
                                                         )
+                                                        queueRunning = true
+                                                        queueStatus = "Очередь запущена в фоновом режиме"
                                                     } catch (e: Exception) {
-                                                        queueStatus = "Фоновый режим недоступен: " + (e.localizedMessage ?: "ошибка")
-                                                    }
-                                                    downloadBusy = true
-                                                    queueStatus = "Подготовка очереди..."
-                                                    DownloadNotifications.show(this@MainActivity, "RobotPost · загрузки", "Подготовка очереди")
-                                                    downloadScope.launch {
-                                                        try {
-                                                            var completed = 0
-                                                            var failures = 0
-                                                            while (pendingQueue.isNotEmpty() && !queueStopRequested) {
-                                                                val current = pendingQueue.first()
-                                                                try {
-                                                                queueStatus = "Проверяю: " + current
-                                                                val info = withContext(Dispatchers.IO) {
-                                                                    DownloadEngine.inspect(this@MainActivity, current)
-                                                                }
-                                                                val available = info.optJSONArray("formats")
-                                                                if (available == null || available.length() == 0) {
-                                                                    error("Нет доступных форматов для " + current)
-                                                                }
-                                                                val selected = (0 until available.length()).map { available.getJSONObject(it) }
-                                                                    .firstOrNull { candidate ->
-                                                                        if (queueQuality == "audio") candidate.optString("kind") == "audio"
-                                                                        else candidate.optString("kind") != "audio" && candidate.optInt("height", 0) in 1..queueQuality.toInt()
-                                                                    } ?: error("Нет формата " + queueQuality + " для " + current)
-                                                                val format = selected.getString("id")
-                                                                queueStatus = "Скачиваю: " + info.optString("title", current)
-                                                                DownloadNotifications.show(this@MainActivity, "RobotPost · загрузка", info.optString("title", current))
-                                                                val result = withContext(Dispatchers.IO) {
-                                                                    DownloadEngine.download(
-                                                                        this@MainActivity, current, Uri.parse(chosenRoot), format,
-                                                                        onTemp = { directory -> runOnUiThread { activeDownloadDirectory = directory } },
-                                                                        onProgress = { progress -> runOnUiThread { queueStatus = progress } }
-                                                                    )
-                                                                }
-                                                                DownloadHistory.add(this@MainActivity, result, current)
-                                                                history = DownloadHistory.list(this@MainActivity)
-                                                                    completed++
-                                                                } catch (e: Exception) {
-                                                                    if (queueStopRequested) break
-                                                                    failures++
-                                                                    failureReasons = failureReasons + (current to (e.localizedMessage ?: "Неизвестная ошибка"))
-                                                                    prefs.edit().putString("failureReasons", JSONObject(failureReasons).toString()).apply()
-                                                                    if (current !in failedQueue) {
-                                                                        failedQueue = failedQueue + current
-                                                                        prefs.edit().putString("failedQueue", failedQueue.joinToString("\n")).apply()
-                                                                    }
-                                                                    queueStatus = "Ошибка ролика: " + (e.localizedMessage ?: current)
-                                                                }
-                                                                pendingQueue = pendingQueue.drop(1)
-                                                                prefs.edit().putString("pendingQueue", pendingQueue.joinToString("\n")).apply()
-                                                                activeDownloadDirectory = null
-                                                            }
-                                                            queueStatus = if (queueStopRequested) "Очередь остановлена · готово: $completed · ошибок: $failures"
-                                                                else "Очередь завершена · готово: $completed · ошибок: $failures"
-                                                        } catch (e: Exception) {
-                                                            queueStatus = "Очередь остановлена: " + (e.localizedMessage ?: "Ошибка")
-                                                        } finally {
-                                                            activeDownloadDirectory = null
-                                                            stopService(Intent(this@MainActivity, DownloadForegroundService::class.java)
-                                                                .setAction(DownloadForegroundService.ACTION_STOP))
-                                                            DownloadNotifications.finish(this@MainActivity, queueStatus)
-                                                            queueRunning = false
-                                                            prefs.edit().putBoolean("queueWasRunning", false).apply()
-                                                            downloadBusy = false
-                                                        }
+                                                        queueStatus = "Не удалось запустить службу: " + (e.localizedMessage ?: "ошибка")
                                                     }
                                                 }
                                             ) { Text(if (queueRunning) "Очередь выполняется..." else "Скачать всю очередь") }
