@@ -104,3 +104,29 @@ def download_video(url, directory, choice):
         "date": info.get("upload_date") or "",
         "description": info.get("description") or "",
     }, ensure_ascii=False)
+
+def latest_channel_videos(channel_url):
+    url = _check_url(channel_url).rstrip("/")
+    if "/@" not in url and "/channel/" not in url and "/c/" not in url and "/user/" not in url:
+        raise ValueError("Нужна ссылка на YouTube-канал")
+    if not url.endswith("/videos"):
+        url += "/videos"
+    opts = _options()
+    opts.update({"extract_flat": "in_playlist", "playlistend": 5, "ignoreerrors": True})
+    with YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    if not info:
+        raise RuntimeError("Не удалось прочитать последние видео канала")
+    result = []
+    for item in info.get("entries") or []:
+        if not item:
+            continue
+        video_id = item.get("id")
+        link = item.get("url") or ""
+        if not link.startswith("https://"):
+            link = "https://www.youtube.com/watch?v=" + str(video_id or "")
+        if video_id and link.startswith("https://"):
+            result.append({"title": item.get("title") or "Видео", "url": link})
+        if len(result) == 5:
+            break
+    return json.dumps(result, ensure_ascii=False)
