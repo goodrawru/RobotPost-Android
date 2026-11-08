@@ -36,4 +36,13 @@ object ArchiveBrowser {
         }
         return emptyMap()
     }
+    /** Returns MP4 files from a playlist folder in the selected SAF archive. */
+    fun playlistFiles(context: Context, tree: Uri, playlist: String): Map<String, Uri> {
+        val root = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        val app = children(context, root).firstOrNull { it.first == "RobotPost" }?.second
+            ?: return emptyMap()
+        val folder = children(context, app).firstOrNull { it.first == playlist }?.second
+            ?: return emptyMap()
+        return children(context, folder).filter { it.first.endsWith(".mp4", ignoreCase = true) }.toMap()
+    }
 }
