@@ -56,10 +56,14 @@ class MainActivity : ComponentActivity() {
                 onBackground = Color(0xFFF4F5FA), secondary = Mint
             )
             MaterialTheme(colorScheme = colors) {
-                var page by remember { mutableIntStateOf(if (intent?.action == Intent.ACTION_SEND) 2 else 0) }
+                var page by remember { mutableIntStateOf(if (intent?.action == Intent.ACTION_SEND) 2 else prefs.getInt("lastPage", 0).coerceIn(0, 4)) }
+                LaunchedEffect(page) { prefs.edit().putInt("lastPage", page).apply() }
                 var savedLinks by remember { mutableStateOf(prefs.getString("savedLinks", "")!!.lines().filter { it.isNotBlank() }) }
                 var linkInput by remember { mutableStateOf(if (intent?.action == Intent.ACTION_SEND) (intent.getStringExtra(Intent.EXTRA_TEXT) ?: "") else "") }
                 var linkError by remember { mutableStateOf("") }
+                var linkSearch by remember { mutableStateOf("") }
+                var newestFirst by remember { mutableStateOf(true) }
+                var confirmClear by remember { mutableStateOf(false) }
                 var channels by remember { mutableStateOf(prefs.getString("channels", "")!!.split("\n").filter { it.isNotBlank() }) }
                 var quality by remember { mutableStateOf(prefs.getString("quality", "Лучшее доступное") ?: "Лучшее доступное") }
                 var autoCheck by remember { mutableStateOf(prefs.getBoolean("autoCheck", false)) }
@@ -182,6 +186,26 @@ class MainActivity : ComponentActivity() {
                                 item { Text("Ссылки для последующей загрузки. Видео пока не скачиваются.", color = Muted) }
                                 item { OutlinedTextField(value = linkInput, onValueChange = { linkInput = it; linkError = "" }, label = { Text("Ссылка YouTube") }, modifier = Modifier.fillMaxWidth()) }
                                 if (linkError.isNotEmpty()) item { Text(linkError, color = Color(0xFFFF9999)) }
+                                item { OutlinedTextField(value = linkSearch, onValueChange = { linkSearch = it }, label = { Text("Поиск по ссылкам") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+                                item {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        TextButton(onClick = { newestFirst = !newestFirst }) { Text(if (newestFirst) "Сначала новые" else "Сначала старые") }
+                                        TextButton(onClick = { confirmClear = true }, enabled = savedLinks.isNotEmpty()) { Text("Очистить") }
+                                    }
+                                }
+                                if (confirmClear) item {
+                                    AlertDialog(
+                                        onDismissRequest = { confirmClear = false },
+                                        title = { Text("Очистить список?") },
+                                        text = { Text("Удаляются только сохранённые ссылки, не файлы.") },
+                                        confirmButton = { TextButton(onClick = {
+                                            savedLinks = emptyList()
+                                            prefs.edit().remove("savedLinks").apply()
+                                            confirmClear = false
+                                        }) { Text("Удалить") } },
+                                        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Отмена") } }
+                                    )
+                                }
                                 item { Button(onClick = {
                                     val link = linkInput.trim().split(" ").firstOrNull { it.contains("youtu.be/") || it.contains("youtube.com/") }?.trim()
                                     if (link == null || !link.startsWith("https://")) linkError = "Укажи HTTPS-ссылку YouTube"
@@ -193,12 +217,16 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }, modifier = Modifier.fillMaxWidth()) { Text("Добавить в список") } }
                                 if (savedLinks.isEmpty()) item { EmptyPanel("↓", "Пока пусто", "Поделись ссылкой из YouTube или вставь её здесь.") }
-                                items(savedLinks) { link ->
+                                items((if (newestFirst) savedLinks else savedLinks.reversed()).filter { it.contains(linkSearch.trim(), ignoreCase = true) }) { link ->
                                     Surface(color = Panel, shape = Shape) {
                                         Column(Modifier.padding(16.dp)) {
                                             Text(link, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                             Row {
                                                 TextButton(onClick = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link))) }) { Text("Открыть") }
+                                                TextButton(onClick = {
+                                                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("RobotPost link", link))
+                                                }) { Text("Копировать") }
                                                 TextButton(onClick = {
                                                     savedLinks = savedLinks - link
                                                     prefs.edit().putString("savedLinks", savedLinks.joinToString("\n")).apply()
