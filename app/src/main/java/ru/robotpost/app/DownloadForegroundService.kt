@@ -1,6 +1,8 @@
 package ru.robotpost.app
 
 import android.app.Notification
+import android.Manifest
+import android.content.pm.PackageManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
@@ -47,13 +49,14 @@ class DownloadForegroundService : Service() {
             .setOnlyAlertOnce(true)
             .setOngoing(true)
             .build()
-        manager.notify(ID, notification)
+        if (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+            manager.notify(ID, notification)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             stopping = true
-            activeTemp?.let { File(it, "cancel.flag").writeText("cancel") }
+            activeTemp?.let { runCatching { File(it, "cancel.flag").writeText("cancel") } }
             status("Останавливаю очередь...")
             if (worker == null) stopSelf()
             return START_NOT_STICKY
@@ -81,7 +84,7 @@ class DownloadForegroundService : Service() {
         val prefs = getSharedPreferences("robotpost", Context.MODE_PRIVATE)
         var completed = 0
         var failed = 0
-        prefs.edit().putBoolean("queueWasRunning", true).apply()
+        prefs.edit().putBoolean("queueWasRunning", true).commit()
         try {
             while (!stopping) {
                 val pending = prefs.getString("pendingQueue", "").orEmpty().lines().filter { it.isNotBlank() }
@@ -121,13 +124,13 @@ class DownloadForegroundService : Service() {
                     activeTemp = null
                 }
                 // Remove only after successful export or recorded failure.
-                prefs.edit().putString("pendingQueue", pending.drop(1).joinToString("\n")).apply()
+                prefs.edit().putString("pendingQueue", pending.drop(1).joinToString("\n")).commit()
             }
         } finally {
             val message = if (stopping) "Остановлено · готово: $completed · ошибок: $failed"
                 else "Завершено · готово: $completed · ошибок: $failed"
             prefs.edit().putBoolean("queueWasRunning", false)
-                .putString("queueServiceStatus", message).apply()
+                .putString("queueServiceStatus", message).commit()
             stopForeground(STOP_FOREGROUND_REMOVE)
             DownloadNotifications.finish(this, message)
             worker = null
