@@ -42,33 +42,39 @@ def _available(info):
              and str(f.get("acodec") or "").startswith(("mp4a", "aac"))
              and f.get("vcodec") == "none"]
     best_audio = max(audio, key=lambda f: f.get("abr") or f.get("tbr") or 0, default=None)
-    # One best format per resolution. Prefer MP4 with sound, otherwise AVC+AAC.
-    # Keep the exact format IDs for downloads; only simplify the visible list.
-    by_height = {}
+    # Expose every compatible, URL-backed format rather than hiding variants
+    # with the same resolution. The Android muxer supports H.264 + AAC MP4.
+    choices = []
     for f in combined:
         height = f.get("height") or 0
-        if 0 < height <= 720:
-            score = (1, f.get("tbr") or 0)
-            item = {"id": "single:" + str(f["format_id"]),
-                    "label": str(height) + "p · MP4 со звуком",
-                    "height": height, "kind": "single"}
-            if height not in by_height or score > by_height[height][0]:
-                by_height[height] = (score, item)
+        if height > 0 and str(f.get("vcodec") or "").startswith(("avc1", "h264")):
+            bitrate = round(f.get("tbr") or 0)
+            choices.append({
+                "id": "single:" + str(f["format_id"]),
+                "label": f"{height}p · MP4 со звуком · {f['format_id']}" +
+                         (f" · {bitrate} кбит/с" if bitrate else ""),
+                "height": height, "kind": "single",
+            })
     if best_audio:
         for f in video:
             height = f.get("height") or 0
-            if 0 < height <= 720:
-                score = (0, f.get("tbr") or 0)
-                item = {"id": "merge:" + str(f["format_id"]) + "+" + str(best_audio["format_id"]),
-                        "label": str(height) + "p · MP4 + AAC",
-                        "height": height, "kind": "merge"}
-                if height not in by_height or score > by_height[height][0]:
-                    by_height[height] = (score, item)
-    choices = [entry[1] for entry in by_height.values()]
-    choices.sort(key=lambda item: item["height"], reverse=True)
-    if best_audio:
-        choices.append({"id": "audio:" + str(best_audio["format_id"]),
-                        "label": "Только аудио · M4A", "height": -1, "kind": "audio"})
+            if height > 0:
+                bitrate = round(f.get("tbr") or 0)
+                choices.append({
+                    "id": "merge:" + str(f["format_id"]) + "+" + str(best_audio["format_id"]),
+                    "label": f"{height}p · MP4 + AAC · {f['format_id']}" +
+                             (f" · {bitrate} кбит/с" if bitrate else ""),
+                    "height": height, "kind": "merge",
+                })
+    choices.sort(key=lambda item: (item["height"], item["kind"] == "single"), reverse=True)
+    for f in sorted(audio, key=lambda item: item.get("abr") or item.get("tbr") or 0, reverse=True):
+        bitrate = round(f.get("abr") or f.get("tbr") or 0)
+        choices.append({
+            "id": "audio:" + str(f["format_id"]),
+            "label": "M4A · " + str(f["format_id"]) +
+                     (f" · {bitrate} кбит/с" if bitrate else ""),
+            "height": -1, "kind": "audio",
+        })
     return choices
 
 class _DiagnosticLogger:
@@ -101,7 +107,7 @@ def _inspect_best(url):
                             "warnings": warnings[:8]})
             if best_info is None or max((x["height"] for x in choices), default=0) > max((x["height"] for x in best_choices), default=0):
                 best_info, best_choices, best_profile = info, choices, profile
-            if max((x["height"] for x in best_choices), default=0) >= 720:
+            if max((x["height"] for x in best_choices), default=0) >= 2160:
                 break
         except Exception as exc:
             failures.append(str(exc)[:180])
