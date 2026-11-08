@@ -14,11 +14,20 @@ def _check_url(url):
     return url
 
 def _options(profile="legacy"):
-    return {
+    opts = {
         "noplaylist": True, "quiet": True, "no_warnings": True,
         "retries": 4, "fragment_retries": 4, "socket_timeout": 35,
-        "extractor_args": {"youtube": {"player_client": {"legacy": ["android", "web"], "alternate": ["web_safari", "ios", "android"], "tv": ["tv", "web"]}.get(profile, ["android", "web"])}},
     }
+    # The extractor's own defaults are deliberately tried first on newer
+    # yt-dlp versions. Forced clients can hide adaptive streams.
+    clients = {
+        "legacy": ["android", "web"],
+        "alternate": ["web_safari", "ios", "android"],
+        "tv": ["tv", "web"],
+    }
+    if profile in clients:
+        opts["extractor_args"] = {"youtube": {"player_client": clients[profile]}}
+    return opts
 
 def _available(info):
     formats = [f for f in (info.get("formats") or []) if f.get("url")]
@@ -68,7 +77,7 @@ def _inspect_best(url):
     best_info, best_choices, best_profile = None, [], "legacy"
     failures = []
     reports = []
-    for profile in ("legacy", "alternate", "tv"):
+    for profile in ("auto", "legacy", "alternate", "tv"):
         try:
             warnings = []
             opts = _options(profile)
@@ -144,7 +153,7 @@ def download_video(url, directory, choice):
         profile, selection = choice.split("|", 1)
     else:
         profile, selection = "legacy", choice
-    if profile not in ("legacy", "alternate", "tv"):
+    if profile not in ("auto", "legacy", "alternate", "tv"):
         raise ValueError("Неизвестный профиль загрузки")
     with YoutubeDL(_options(profile)) as ydl:
         info = ydl.extract_info(url, download=False)
