@@ -5,7 +5,7 @@ from pathlib import Path
 from yt_dlp import YoutubeDL
 
 def download_video(url, directory):
-    if not re.match(r"^https://(?:www\\.|m\\.)?(?:youtube\\.com|youtu\\.be)/", url):
+    if not re.match(r"^https://(?:www\.|m\.)?(?:youtube\.com|youtu\.be)/", url):
         raise ValueError("Нужна HTTPS-ссылка YouTube")
     os.makedirs(directory, exist_ok=True)
     options = {
