@@ -44,6 +44,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("robotpost", Context.MODE_PRIVATE)
+        val requestNotifications = registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { /* Downloads continue even if notifications are denied. */ }
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            requestNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+
         var pendingText = ""
         val saveText = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri: Uri? ->
             if (uri != null) {
