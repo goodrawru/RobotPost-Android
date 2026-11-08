@@ -527,7 +527,7 @@ class MainActivity : ComponentActivity() {
                                                             history = DownloadHistory.list(this@MainActivity)
                                                             "Сохранено: " + result
                                                         } catch (e: Exception) {
-                                                            "Ошибка: " + (e.localizedMessage ?: "Не удалось скачать видео")
+                                                            "Ошибка: " + DownloadEngine.readableError(e)
                                                         }
                                                         downloadBusy = false
                                                         activeDownloadDirectory = null
