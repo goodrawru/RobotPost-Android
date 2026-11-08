@@ -116,7 +116,7 @@ class DownloadForegroundService : Service() {
                     failed++
                     val failedLinks = prefs.getString("failedQueue", "").orEmpty().lines().filter { it.isNotBlank() }
                     val reasons = runCatching { JSONObject(prefs.getString("failureReasons", "{}")) }.getOrDefault(JSONObject())
-                    reasons.put(url, e.localizedMessage ?: "Ошибка загрузки")
+                    reasons.put(url, DownloadEngine.readableError(e))
                     prefs.edit()
                         .putString("failedQueue", (failedLinks + url).distinct().joinToString("\n"))
                         .putString("failureReasons", reasons.toString()).apply()
