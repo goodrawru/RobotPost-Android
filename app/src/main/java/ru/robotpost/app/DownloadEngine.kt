@@ -52,6 +52,11 @@ object DownloadEngine {
         JSONObject(python(context).getModule("downloader").callAttr("inspect_video", url).toString())
 
     fun download(context: Context, url: String, root: Uri, formatId: String, onTemp: (File) -> Unit = {}, onProgress: (String) -> Unit = {}, includeDescription: Boolean = true, videoOnly: Boolean = false, playlistName: String = "", playlistIndex: Int = 0, saveMode: String = "full"): String {
+        require(saveMode in setOf("full", "video", "video_description", "audio")) {
+            "Неизвестный режим сохранения"
+        }
+        if (saveMode in setOf("video", "video_description") && formatId.substringAfter("|").startsWith("audio:"))
+            error("Для выбранного режима нужен видеоформат. Выберите MP4 в списке качества.")
         val temp = File(context.cacheDir, "robotpost_" + UUID.randomUUID().toString()).apply { mkdirs() }
         onTemp(temp)
         try {
