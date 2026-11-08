@@ -124,7 +124,7 @@ def inspect_video(url):
     diagnostics = []
     for fmt in raw_formats:
         height = fmt.get("height") or 0
-        if height and height <= 720:
+        if height:
             diagnostics.append({
                 "id": str(fmt.get("format_id") or "?"),
                 "height": height,
