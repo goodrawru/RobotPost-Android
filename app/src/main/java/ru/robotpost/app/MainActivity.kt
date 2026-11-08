@@ -156,6 +156,8 @@ class MainActivity : ComponentActivity() {
                 var playlistPreviewTitle by remember { mutableStateOf("") }
                 var showPlaylistPreview by remember { mutableStateOf(false) }
                 var queueQuality by remember { mutableStateOf(prefs.getString("queueQuality", "720") ?: "720") }
+                var includeDescription by remember { mutableStateOf(prefs.getBoolean("includeDescription", true)) }
+                var expandedArchive by remember { mutableStateOf(setOf<String>()) }
                 var linkInput by remember { mutableStateOf(if (intent?.action == Intent.ACTION_SEND) (intent.getStringExtra(Intent.EXTRA_TEXT) ?: "") else "") }
                 var linkError by remember { mutableStateOf("") }
                 var downloadBusy by remember { mutableStateOf(false) }
@@ -547,7 +549,8 @@ class MainActivity : ComponentActivity() {
                                                             val result = withContext(Dispatchers.IO) {
                                                                 DownloadEngine.download(this@MainActivity, url, Uri.parse(chosenRoot), format,
                                                                     onTemp = { activeDownloadDirectory = it },
-                                                                    onProgress = { progress -> runOnUiThread { downloadStatus = progress } }
+                                                                    onProgress = { progress -> runOnUiThread { downloadStatus = progress } },
+                                                                    includeDescription = includeDescription
                                                                 )
                                                             }
                                                             DownloadHistory.add(this@MainActivity, result, url)
@@ -704,6 +707,15 @@ class MainActivity : ComponentActivity() {
                                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Text("Очередь подготовки (${pendingQueue.size})", fontWeight = FontWeight.Bold)
                                             Text("Единое качество для всех роликов очереди (максимум 720p). При ошибке ролик пропускается и сохраняется для повторной попытки.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Checkbox(checked = includeDescription, onCheckedChange = {
+                                                    includeDescription = it
+                                                    prefs.edit().putBoolean("includeDescription", it).apply()
+                                                })
+                                                Text("Сохранять описание TXT")
+                                            }
+                                            Text(if (includeDescription) "Видео + аудио + описание" else "Только медиа: видео со звуком, без TXT",
+                                                color = Muted, style = MaterialTheme.typography.bodySmall)
                                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                                 listOf("720", "480", "360", "audio").forEach { quality ->
                                                     OutlinedButton(
@@ -944,9 +956,20 @@ class MainActivity : ComponentActivity() {
                                     items(history) { entry ->
                                         Surface(color = Panel, shape = Shape) {
                                             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                Text(entry.optString("name", "Комплект"), fontWeight = FontWeight.SemiBold)
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(entry.optString("name", "Комплект"), fontWeight = FontWeight.SemiBold,
+                                                        modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                                    TextButton(onClick = {
+                                                        val key = entry.optString("name") + "|" + entry.optLong("savedAt")
+                                                        expandedArchive = if (key in expandedArchive) expandedArchive - key else expandedArchive + key
+                                                    }) {
+                                                        val key = entry.optString("name") + "|" + entry.optLong("savedAt")
+                                                        Text(if (key in expandedArchive) "Свернуть ▲" else "Открыть ▼")
+                                                    }
+                                                }
                                                 Text(entry.optString("source", ""), color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                                 Text(java.text.SimpleDateFormat("dd.MM.yy HH:mm", Locale.ROOT).format(Date(entry.optLong("savedAt"))), color = Mint, style = MaterialTheme.typography.bodySmall)
+                                                if ((entry.optString("name") + "|" + entry.optLong("savedAt")) in expandedArchive) {
                                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                                                     listOf(
                                                         Triple("Видео", "video.mp4", "video/mp4"),
@@ -1023,6 +1046,7 @@ class MainActivity : ComponentActivity() {
                                                             startActivity(Intent.createChooser(share, "Поделиться ссылкой"))
                                                         }) { Text("Поделиться") }
                                                     }
+                                                }
                                                 }
                                             }
                                         }
