@@ -24,25 +24,30 @@ def _available(info):
     combined = [f for f in formats if f.get("ext") == "mp4"
                 and f.get("vcodec") not in (None, "none")
                 and f.get("acodec") not in (None, "none")]
+    # Android MediaMuxer can combine AVC/H.264 and AAC without transcoding.
     video = [f for f in formats if f.get("ext") == "mp4"
-             and f.get("vcodec", "none").startswith(("avc1", "h264"))
+             and str(f.get("vcodec") or "").startswith(("avc1", "h264"))
              and f.get("acodec") == "none"]
-    audio = [f for f in formats if f.get("ext") == "m4a"
-             and f.get("acodec") not in (None, "none")]
+    audio = [f for f in formats if f.get("ext") in ("m4a", "mp4")
+             and str(f.get("acodec") or "").startswith(("mp4a", "aac"))
+             and f.get("vcodec") == "none"]
     best_audio = max(audio, key=lambda f: f.get("abr") or f.get("tbr") or 0, default=None)
     choices = []
     for f in combined:
-        choices.append({"id": "single:" + str(f["format_id"]),
-                        "label": str(f.get("height") or "?") + "p · MP4 со звуком",
-                        "height": f.get("height") or 0, "kind": "single"})
+        height = f.get("height") or 0
+        if 0 < height <= 720:
+            choices.append({"id": "single:" + str(f["format_id"]),
+                            "label": str(height) + "p · MP4 со звуком",
+                            "height": height, "kind": "single"})
     if best_audio:
         for f in video:
-            choices.append({"id": "merge:" + str(f["format_id"]) + "+" + str(best_audio["format_id"]),
-                            "label": str(f.get("height") or "?") + "p · MP4 + M4A (объединение)",
-                            "height": f.get("height") or 0, "kind": "merge"})
+            height = f.get("height") or 0
+            if 0 < height <= 720:
+                choices.append({"id": "merge:" + str(f["format_id"]) + "+" + str(best_audio["format_id"]),
+                                "label": str(height) + "p · MP4 + AAC",
+                                "height": height, "kind": "merge"})
         choices.append({"id": "audio:" + str(best_audio["format_id"]),
                         "label": "Только аудио · M4A", "height": -1, "kind": "audio"})
-    choices = [c for c in choices if c["height"] <= 720]
     choices.sort(key=lambda c: (c["height"], c["kind"] == "single"), reverse=True)
     return choices
 
