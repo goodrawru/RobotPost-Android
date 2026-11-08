@@ -568,14 +568,17 @@ class MainActivity : ComponentActivity() {
                                                     downloadStatus = "Подготовка скачивания... Оставь приложение открытым."
                                                     val url = linkInput.trim()
                                                     val format = selectedFormat
+                                                    val requestedSaveMode = singleSaveMode
+                                                    val requestedDescription = includeDescription
+                                                    val requestedRoot = chosenRoot
                                                     downloadScope.launch {
                                                         downloadStatus = try {
                                                             val result = withContext(Dispatchers.IO) {
-                                                                DownloadEngine.download(this@MainActivity, url, Uri.parse(chosenRoot), format,
+                                                                DownloadEngine.download(this@MainActivity, url, Uri.parse(requestedRoot), format,
                                                                     onTemp = { activeDownloadDirectory = it },
                                                                     onProgress = { progress -> runOnUiThread { downloadStatus = progress } },
-                                                                    includeDescription = includeDescription,
-                                                                    saveMode = singleSaveMode
+                                                                    includeDescription = requestedDescription,
+                                                                    saveMode = requestedSaveMode
                                                                 )
                                                             }
                                                             DownloadHistory.add(this@MainActivity, result, url)
