@@ -105,11 +105,20 @@ class DownloadForegroundService : Service() {
                     val info = withContext(Dispatchers.IO) { DownloadEngine.inspect(this@DownloadForegroundService, url) }
                     if (stopping) break
                     val formats = info.optJSONArray("formats") ?: error("Нет форматов")
-                    val selected = (0 until formats.length()).map { formats.getJSONObject(it) }
-                        .firstOrNull {
+                    val candidates = (0 until formats.length()).map { formats.getJSONObject(it) }
+                        .filter {
                             if (quality == "audio") it.optString("kind") == "audio"
-                            else it.optString("kind") != "audio" && it.optInt("height", 0) in 1..quality.toInt()
-                        } ?: error("Нет подходящего формата")
+                            else it.optString("kind") != "audio" && it.optInt("height", 0) > 0
+                        }
+                    val selected = if (quality == "audio") candidates.firstOrNull()
+                        else candidates.filter { it.optInt("height", 0) <= quality.toInt() }
+                            .maxWithOrNull(compareBy<JSONObject> { it.optInt("height", 0) }
+                                .thenBy { if (it.optString("kind") == "single") 1 else 0 })
+                            ?: candidates.minWithOrNull(compareBy<JSONObject> { it.optInt("height", 0) }
+                                .thenByDescending { if (it.optString("kind") == "single") 1 else 0 })
+                    require(selected != null) { "Нет доступных совместимых форматов" }
+                    if (quality != "audio" && selected.optInt("height", 0) != quality.toInt())
+                        status("Доступно ${selected.optInt("height", 0)}p вместо ${quality}p")
                     status("Скачиваю: " + info.optString("title", url))
                     val saved = withContext(Dispatchers.IO) {
                         DownloadEngine.download(this@DownloadForegroundService, url, Uri.parse(root), selected.getString("id"),
