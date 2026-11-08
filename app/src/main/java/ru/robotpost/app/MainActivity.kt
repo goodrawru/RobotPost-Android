@@ -128,6 +128,12 @@ class MainActivity : ComponentActivity() {
                 var queueStopRequested by remember { mutableStateOf(false) }
                 var queueSelected by remember { mutableStateOf(setOf<String>()) }
                 var failedQueue by remember { mutableStateOf(prefs.getString("failedQueue", "")!!.lines().filter { it.isNotBlank() }) }
+                var failureReasons by remember { mutableStateOf(
+                    runCatching {
+                        val json = JSONObject(prefs.getString("failureReasons", "{}") ?: "{}")
+                        json.keys().asSequence().associateWith { key -> json.optString(key) }
+                    }.getOrDefault(emptyMap<String, String>())
+                ) }
                 var queueStatus by remember { mutableStateOf(
                     if (prefs.getBoolean("queueWasRunning", false)) "Предыдущая загрузка прервана. Очередь сохранена для продолжения."
                     else ""
@@ -709,6 +715,8 @@ class MainActivity : ComponentActivity() {
                                                                 } catch (e: Exception) {
                                                                     if (queueStopRequested) break
                                                                     failures++
+                                                                    failureReasons = failureReasons + (current to (e.localizedMessage ?: "Неизвестная ошибка"))
+                                                                    prefs.edit().putString("failureReasons", JSONObject(failureReasons).toString()).apply()
                                                                     if (current !in failedQueue) {
                                                                         failedQueue = failedQueue + current
                                                                         prefs.edit().putString("failedQueue", failedQueue.joinToString("\n")).apply()
@@ -750,10 +758,16 @@ class MainActivity : ComponentActivity() {
                                                     onClick = {
                                                         pendingQueue = (pendingQueue + failedQueue).distinct()
                                                         failedQueue = emptyList()
+                                                        failureReasons = emptyMap()
+                                                        prefs.edit().putString("failureReasons", "{}").apply()
                                                         prefs.edit().putString("pendingQueue", pendingQueue.joinToString("\n"))
                                                             .putString("failedQueue", "").apply()
                                                     }
                                                 ) { Text("Повторить неудачные") }
+                                                failedQueue.take(10).forEach { failed ->
+                                                    Text(failed.substringBefore("?"), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                    Text(failureReasons[failed] ?: "Ошибка загрузки", color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                                                }
                                             }
                                             if (pendingQueue.isNotEmpty()) {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
