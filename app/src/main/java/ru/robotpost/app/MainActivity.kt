@@ -851,20 +851,20 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             ) { Text(if (queueRunning) "◌  Очередь выполняется..." else "↓  Скачать всю очередь") }
                                             if (queueStatus.isNotBlank()) Text(queueStatus, color = if (queueStatus.startsWith("Очередь остановлена")) Color(0xFFFF9999) else Mint)
-                                            if (queueRunning && queueTotal > 0) {
+                                            if (queueRunning) {
                                                 Text("Текущий ролик: " + queueItemTitle, maxLines = 2,
                                                     overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
                                                 LinearProgressIndicator(
                                                     progress = { queueItemPercent / 100f },
                                                     modifier = Modifier.fillMaxWidth()
                                                 )
-                                                Text("$" + "{queueItemPercent}% · текущий файл", color = Muted,
+                                                Text("${queueItemPercent}% · текущий файл", color = Muted,
                                                     style = MaterialTheme.typography.labelSmall)
                                                 LinearProgressIndicator(
-                                                    progress = { (queueProcessed.toFloat() / queueTotal).coerceIn(0f, 1f) },
+                                                    progress = { if (queueTotal > 0) (queueProcessed.toFloat() / queueTotal).coerceIn(0f, 1f) else 0f },
                                                     modifier = Modifier.fillMaxWidth(), color = Mint
                                                 )
-                                                Text("$" + "{queueProcessed} из $" + "{queueTotal} · обработано в очереди",
+                                                Text("${queueProcessed} из ${queueTotal} · обработано в очереди",
                                                     color = Muted, style = MaterialTheme.typography.labelSmall)
                                             }
                                             if (queueRunning) OutlinedButton(
