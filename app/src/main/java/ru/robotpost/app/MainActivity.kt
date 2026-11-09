@@ -566,26 +566,13 @@ class MainActivity : ComponentActivity() {
                                                     )
                                                 }
                                             }
-                                            Text("Режим сохранения", color = Accent, fontWeight = FontWeight.SemiBold)
-                                            listOf(
-                                                "full" to "Полный комплект: MP4 + M4A + TXT",
-                                                "video" to "Только видео: MP4 со звуком",
-                                                "video_description" to "Видео + описание: MP4 + TXT",
-                                                "audio" to "Только аудио: M4A"
-                                            ).forEach { (mode, label) ->
-                                                Row(verticalAlignment = Alignment.CenterVertically,
-                                                    modifier = Modifier.fillMaxWidth().clickable {
-                                                        singleSaveMode = mode
-                                                        prefs.edit().putString("singleSaveMode", mode).apply()
-                                                    }) {
-                                                    RadioButton(selected = singleSaveMode == mode, onClick = {
-                                                        singleSaveMode = mode
-                                                        prefs.edit().putString("singleSaveMode", mode).apply()
-                                                    })
-                                                    Text(label, style = MaterialTheme.typography.bodyMedium)
+                                            SaveModeDropdown(
+                                                selected = singleSaveMode,
+                                                onSelect = { mode ->
+                                                    singleSaveMode = mode
+                                                    prefs.edit().putString("singleSaveMode", mode).apply()
                                                 }
-                                                HorizontalDivider(thickness = 0.5.dp, color = Separator)
-                                            }
+                                            )
                                             OutlinedButton(onClick = { chooseRoot.launch(null) }, modifier = Modifier.fillMaxWidth()) {
                                                 Text(if (chosenRoot.isBlank()) "▣  Выбрать папку архива" else "▣  Изменить папку архива")
                                             }
@@ -794,27 +781,20 @@ class MainActivity : ComponentActivity() {
                                             }
                                             Text("Для очереди выбирается максимальное качество из настроек. Для одиночного видео доступны все совместимые форматы. Ошибочные загрузки сохраняются для повторной попытки.", color = Muted, style = MaterialTheme.typography.bodySmall)
                                             HorizontalDivider(thickness = 1.dp, color = Separator)
-                                            Text("Режим сохранения", color = Accent, fontWeight = FontWeight.SemiBold)
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                RadioButton(selected = !playlistVideoOnly, onClick = {
-                                                    playlistVideoOnly = false
-                                                    prefs.edit().putBoolean("playlistVideoOnly", false).apply()
-                                                })
-                                                Text("Полный комплект: MP4 + M4A + TXT")
-                                            }
-                                            HorizontalDivider(thickness = 0.5.dp, color = Separator)
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                RadioButton(selected = playlistVideoOnly, onClick = {
-                                                    playlistVideoOnly = true
-                                                    if (queueQuality == "audio") queueQuality = "720"
-                                                    prefs.edit().putBoolean("playlistVideoOnly", true)
+                                            SaveModeDropdown(
+                                                selected = if (playlistVideoOnly) "video" else "full",
+                                                onSelect = { mode ->
+                                                    playlistVideoOnly = mode == "video"
+                                                    if (playlistVideoOnly && queueQuality == "audio") queueQuality = "720"
+                                                    prefs.edit().putBoolean("playlistVideoOnly", playlistVideoOnly)
                                                         .putString("queueQuality", queueQuality).apply()
-                                                })
-                                                Text("Только видео: MP4 со звуком в папке плейлиста")
-                                            }
-                                            HorizontalDivider(thickness = 1.dp, color = Separator)
-                                            if (playlistVideoOnly) Text("Для видео, добавленных из плейлиста, создаётся общая папка с названием плейлиста. Отдельные аудио и TXT не сохраняются.",
-                                                color = Muted, style = MaterialTheme.typography.bodySmall)
+                                                },
+                                                modes = listOf("full", "video")
+                                            )
+                                            if (playlistVideoOnly) Text(
+                                                "Видео плейлиста сохраняются в общей папке с его названием.",
+                                                color = Muted, style = MaterialTheme.typography.bodySmall
+                                            )
                                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                                 listOf("720", "480", "360", "audio").forEach { quality ->
                                                     OutlinedButton(
@@ -1314,6 +1294,43 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SaveModeDropdown(
+    selected: String,
+    onSelect: (String) -> Unit,
+    modes: List<String> = listOf("full", "video", "video_description", "audio")
+) {
+    val labels = mapOf(
+        "full" to "Полный комплект · MP4 + M4A + TXT",
+        "video" to "Только видео · MP4",
+        "video_description" to "Видео + описание · MP4 + TXT",
+        "audio" to "Только аудио · M4A"
+    )
+    var expanded by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Режим сохранения", color = Accent, fontWeight = FontWeight.SemiBold)
+        Box {
+            OutlinedButton(
+                onClick = { expanded = true },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(labels[selected] ?: labels.getValue("full"), modifier = Modifier.weight(1f),
+                    maxLines = 2, style = MaterialTheme.typography.bodySmall)
+                Text("  ▾", color = Accent)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                modes.forEach { mode ->
+                    DropdownMenuItem(
+                        text = { Text(labels[mode] ?: mode, style = MaterialTheme.typography.bodySmall) },
+                        onClick = { onSelect(mode); expanded = false },
+                        leadingIcon = { if (selected == mode) Text("✓", color = Accent) }
+                    )
                 }
             }
         }
