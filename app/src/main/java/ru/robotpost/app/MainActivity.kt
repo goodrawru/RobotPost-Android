@@ -809,19 +809,15 @@ class MainActivity : ComponentActivity() {
                                                 "Видео плейлиста сохраняются в общей папке с его названием.",
                                                 color = Muted, style = MaterialTheme.typography.bodySmall
                                             )
-                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                listOf("720", "480", "360", "audio").forEach { quality ->
-                                                    OutlinedButton(
-                                                        onClick = {
-                                                            queueQuality = quality
-                                                            prefs.edit().putString("queueQuality", quality).apply()
-                                                        },
-                                                        enabled = !queueRunning && queueQuality != quality && !(playlistSaveMode != "audio" && quality == "audio") && !(playlistSaveMode == "audio" && quality != "audio"),
-                                                        modifier = Modifier.weight(1f),
-                                                        contentPadding = PaddingValues(horizontal = 2.dp)
-                                                    ) { Text(if (quality == "audio") "M4A" else quality + "p") }
-                                                }
-                                            }
+                                            QueueQualityDropdown(
+                                                selected = queueQuality,
+                                                audioOnly = playlistSaveMode == "audio",
+                                                onSelect = { quality ->
+                                                    queueQuality = quality
+                                                    prefs.edit().putString("queueQuality", quality).apply()
+                                                },
+                                                enabled = !queueRunning
+                                            )
                                             if (chosenRoot.isBlank()) {
                                                 Text("Для скачивания очереди сначала выбери папку архива.", color = Color(0xFFFFC48A))
                                                 OutlinedButton(
@@ -1324,6 +1320,36 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QueueQualityDropdown(
+    selected: String,
+    audioOnly: Boolean,
+    enabled: Boolean,
+    onSelect: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val qualities = if (audioOnly) listOf("audio") else listOf("720", "480", "360")
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Качество очереди", color = Accent, fontWeight = FontWeight.SemiBold)
+        Box {
+            OutlinedButton(onClick = { expanded = true }, enabled = enabled,
+                modifier = Modifier.fillMaxWidth()) {
+                Text(if (selected == "audio") "Аудио · M4A" else "Видео · $" + "{selected}p",
+                    modifier = Modifier.weight(1f))
+                Text(" ▾")
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                qualities.forEach { quality ->
+                    DropdownMenuItem(
+                        text = { Text(if (quality == "audio") "Аудио · M4A" else "Видео · $" + "{quality}p") },
+                        onClick = { onSelect(quality); expanded = false }
+                    )
                 }
             }
         }
