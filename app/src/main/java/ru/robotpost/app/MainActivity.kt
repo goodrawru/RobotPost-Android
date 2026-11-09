@@ -767,7 +767,7 @@ class MainActivity : ComponentActivity() {
                                                     Text(if (queueDetailsExpanded) "Скрыть список ▲" else "Показать список ▼")
                                                 }
                                             }
-                                            Text("Для очереди выбирается максимальное качество из настроек. Для одиночного видео доступны все совместимые форматы. Ошибочные загрузки сохраняются для повторной попытки.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                            Text("Настройки очереди применяются к добавляемым роликам. Ошибки можно просмотреть ниже.", color = Muted, style = MaterialTheme.typography.bodySmall)
                                             HorizontalDivider(thickness = 1.dp, color = Separator)
                                             SaveModeDropdown(
                                                 selected = playlistSaveMode,
@@ -972,7 +972,7 @@ class MainActivity : ComponentActivity() {
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    item { SectionTitle("Ручная сборка") }
+                                    item { Text("Собери комплект из файлов телефона без повторной загрузки.", color = Muted, style = MaterialTheme.typography.bodySmall) }
 
                                     item {
                                         Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
@@ -1039,7 +1039,7 @@ class MainActivity : ComponentActivity() {
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                item { SectionTitle("Архив сохранений") }
+                                item { Text("Сохранённые видео и комплекты, сгруппированные по плейлистам.", color = Muted, style = MaterialTheme.typography.bodySmall) }
                                     item {
                                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                                             Text("История сохранений (${history.size})", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
