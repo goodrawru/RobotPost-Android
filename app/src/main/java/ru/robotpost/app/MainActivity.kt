@@ -307,19 +307,20 @@ class MainActivity : ComponentActivity() {
                 var description by remember { mutableStateOf(prefs.getString("description", "") ?: "") }
                 val tabs = listOf("Главная", "Каналы", "Загрузки", "Сборка", "Архив", "Настройки")
                 val glyphs = listOf("⌂", "▣", "⇩", "⊕", "▤", "⚙")
+                val railLabels = listOf("Главная", "Каналы", "Загрузки", "Сборка", "Архив", "Опции")
                 Scaffold(containerColor = Ink) { insets ->
                     Row(Modifier.fillMaxSize().padding(insets)) {
                         NavigationRail(
                             containerColor = Panel,
-                            modifier = Modifier.width(76.dp),
-                            header = { Spacer(Modifier.height(12.dp)) }
+                            modifier = Modifier.width(72.dp),
+                            header = { Spacer(Modifier.height(4.dp)) }
                         ) {
                             tabs.forEachIndexed { i, name ->
                                 NavigationRailItem(
                                     selected = page == i,
                                     onClick = { page = i },
                                     icon = { Text(glyphs[i], style = MaterialTheme.typography.titleLarge) },
-                                    label = { Text(name, maxLines = 1, style = MaterialTheme.typography.labelSmall) },
+                                    label = { Text(railLabels[i], maxLines = 1, style = MaterialTheme.typography.labelSmall) },
                                     alwaysShowLabel = true,
                                     colors = NavigationRailItemDefaults.colors(
                                         selectedIconColor = Accent, selectedTextColor = Accent,
@@ -328,7 +329,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                 )
                                 if (i < tabs.lastIndex) HorizontalDivider(
-                                    modifier = Modifier.padding(horizontal = 14.dp),
+                                    modifier = Modifier.padding(horizontal = 12.dp),
                                     thickness = 0.5.dp, color = Separator
                                 )
                             }
@@ -999,7 +1000,7 @@ class MainActivity : ComponentActivity() {
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     item { SectionTitle("Ручная сборка") }
-                                    item { Text("Комплект сохраняется в RobotPost / Имя канала / ДД.ММ.ГГ Название видео.", color = Muted) }
+
                                     item {
                                         Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1057,7 +1058,7 @@ class MainActivity : ComponentActivity() {
                                         ) { Text(if (busy) "Сохраняем..." else "Сохранить комплект") }
                                     }
                                     if (result.isNotBlank()) item { Text(result, color = if (result.startsWith("Ошибка")) Color(0xFFFF9999) else Mint) }
-                                    item { Text("Здесь можно также вручную собрать комплект из файлов телефона. Автоматическое скачивание находится на вкладке «Загрузки».", color = Muted) }
+
                                 }
                             }
                             4 -> LazyColumn(
