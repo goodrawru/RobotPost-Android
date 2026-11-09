@@ -592,31 +592,40 @@ class MainActivity : ComponentActivity() {
                                             Button(
                                                 enabled = !downloadBusy && chosenRoot.isNotBlank() && selectedFormat.isNotBlank() && !inspecting,
                                                 onClick = {
-                                                    downloadBusy = true
-                                                    downloadStatus = "Подготовка скачивания... Оставь приложение открытым."
                                                     val url = linkInput.trim()
                                                     val format = selectedFormat
-                                                    val requestedSaveMode = singleSaveMode
-                                                    val requestedDescription = includeDescription
-                                                    val requestedRoot = chosenRoot
-                                                    downloadScope.launch {
-                                                        downloadStatus = try {
-                                                            val result = withContext(Dispatchers.IO) {
-                                                                DownloadEngine.download(this@MainActivity, url, Uri.parse(requestedRoot), format,
-                                                                    onTemp = { activeDownloadDirectory = it },
-                                                                    onProgress = { progress -> runOnUiThread { downloadStatus = progress } },
-                                                                    includeDescription = requestedDescription,
-                                                                    saveMode = requestedSaveMode
-                                                                )
-                                                            }
-                                                            DownloadHistory.add(this@MainActivity, result, url)
-                                                            history = DownloadHistory.list(this@MainActivity)
-                                                            "Сохранено: " + result
+                                                    val jobs = runCatching {
+                                                        JSONObject(prefs.getString("singleJobMap", "{}") ?: "{}")
+                                                    }.getOrDefault(JSONObject())
+                                                    val job = JSONObject()
+                                                        .put("format", format)
+                                                        .put("mode", singleSaveMode)
+                                                        .put("description", includeDescription)
+                                                        .put("root", chosenRoot)
+                                                    jobs.put(url, job)
+                                                    val current = prefs.getString("pendingQueue", "").orEmpty()
+                                                        .lines().filter { it.isNotBlank() }.toMutableList()
+                                                    if (url !in current) current.add(url)
+                                                    val saved = prefs.edit()
+                                                        .putString("singleJobMap", jobs.toString())
+                                                        .putString("pendingQueue", current.joinToString("\n"))
+                                                        .commit()
+                                                    if (saved) {
+                                                        pendingQueue = current
+                                                        try {
+                                                            androidx.core.content.ContextCompat.startForegroundService(
+                                                                this@MainActivity,
+                                                                Intent(this@MainActivity, DownloadForegroundService::class.java)
+                                                                    .setAction(DownloadForegroundService.ACTION_START)
+                                                            )
+                                                            queueRunning = true
+                                                            downloadStatus = "Загрузка передана фоновой службе. Можно свернуть приложение."
                                                         } catch (e: Exception) {
-                                                            "Ошибка: " + DownloadEngine.readableError(e)
+                                                            downloadStatus = "Задание сохранено в очереди. Запустите очередь вручную: " +
+                                                                (e.localizedMessage ?: "ошибка")
                                                         }
-                                                        downloadBusy = false
-                                                        activeDownloadDirectory = null
+                                                    } else {
+                                                        downloadStatus = "Не удалось сохранить задание. Повторите попытку."
                                                     }
                                                 },
                                                 modifier = Modifier.fillMaxWidth()
