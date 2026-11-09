@@ -598,10 +598,12 @@ class MainActivity : ComponentActivity() {
                                                         .put("mode", singleSaveMode)
                                                         .put("description", includeDescription)
                                                         .put("root", chosenRoot)
-                                                    jobs.put(url, job)
                                                     val current = prefs.getString("pendingQueue", "").orEmpty()
                                                         .lines().filter { it.isNotBlank() }.toMutableList()
-                                                    if (url !in current) current.add(url)
+                                                    if (url !in current) {
+                                                        current.add(url)
+                                                        jobs.put(url, job)
+                                                    }
                                                     val saved = prefs.edit()
                                                         .putString("singleJobMap", jobs.toString())
                                                         .putString("pendingQueue", current.joinToString("\n"))
