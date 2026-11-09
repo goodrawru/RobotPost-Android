@@ -145,13 +145,13 @@ object DownloadEngine {
             }
         }
         if (timestamps.isEmpty()) {
-            val pattern = Regex("""^\\s*((?:\\d{1,2}:)?\\d{1,2}:\\d{2})\\s*[-–—.:)]?\\s*(\\S.*)$""")
+            val pattern = Regex("""^\s*((?:\d{1,2}:)?\d{1,2}:\d{2})\s*[-–—.:)]?\s*(\S.*)$""")
             for (line in info.optString("description", "").lines()) {
                 val match = pattern.find(line) ?: continue
                 timestamps.add(match.groupValues[1] + " — " + match.groupValues[2].trim())
             }
         }
-        return listOf(title, "@minaevcast").joinToString("\\n\\n") +
-            if (timestamps.isEmpty()) "" else "\\n\\n" + timestamps.distinct().joinToString("\\n")
+        return listOf(title, "@minaevcast").joinToString("\n\n") +
+            if (timestamps.isEmpty()) "" else "\n\n" + timestamps.distinct().joinToString("\n")
     }
 }
