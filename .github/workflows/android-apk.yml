@@ -34,7 +34,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      # Verification build for full compact interface refresh and mode dividers.
+      # Verification build for consolidated UI polish and Material theme.
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
       - uses: actions/upload-artifact@v4
