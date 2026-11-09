@@ -87,6 +87,9 @@ class DownloadForegroundService : Service() {
         val prefs = getSharedPreferences("robotpost", Context.MODE_PRIVATE)
         var completed = 0
         var failed = 0
+        val initialTotal = prefs.getString("pendingQueue", "").orEmpty().lines().count { it.isNotBlank() }
+        prefs.edit().putInt("queueTotal", initialTotal).putInt("queueProcessed", 0)
+            .putInt("queueItemPercent", 0).putString("queueItemTitle", "").apply()
         try {
             while (!stopping) {
                 val pending = prefs.getString("pendingQueue", "").orEmpty().lines().filter { it.isNotBlank() }
@@ -125,11 +128,18 @@ class DownloadForegroundService : Service() {
                     require(job != null || selected != null) { "Нет доступных совместимых форматов" }
                     if (job == null && quality != "audio" && selected!!.optInt("height", 0) != quality.toInt())
                         status("Доступно ${selected!!.optInt("height", 0)}p вместо ${quality}p")
-                    status("Скачиваю: " + info.optString("title", url))
+                    val itemTitle = info.optString("title", url)
+                    prefs.edit().putString("queueItemTitle", itemTitle).putInt("queueItemPercent", 0).apply()
+                    status("Скачиваю: " + itemTitle)
                     val saved = withContext(Dispatchers.IO) {
                         DownloadEngine.download(this@DownloadForegroundService, url, Uri.parse(root), job?.getString("format") ?: selected!!.getString("id"),
                             onTemp = { activeTemp = it },
-                            onProgress = { progress -> status(progress) },
+                            onProgress = { progress ->
+                                Regex("""(\\d{1,3})%""").find(progress)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let {
+                                    prefs.edit().putInt("queueItemPercent", it.coerceIn(0, 100)).apply()
+                                }
+                                status(progress)
+                            },
                             includeDescription = job?.optBoolean("description") ?: prefs.getBoolean("includeDescription", true),
                             videoOnly = saveMode == "video",
                             playlistName = if (playlistMeta != null && saveMode == "video") playlistMeta.optString("title") else "",
@@ -182,6 +192,7 @@ class DownloadForegroundService : Service() {
                 val current = prefs.getString("pendingQueue", "").orEmpty()
                     .lines().filter { it.isNotBlank() }.toMutableList()
                 current.remove(url)
+                prefs.edit().putInt("queueProcessed", completed + failed).putInt("queueItemPercent", 0).apply()
                 check(prefs.edit().putString("pendingQueue", current.joinToString("\n")).commit()) {
                     "Не удалось сохранить обновлённую очередь"
                 }
