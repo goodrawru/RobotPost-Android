@@ -41,6 +41,8 @@ private val Mint = Color(0xFF78E1BF)
 private val Shape = RoundedCornerShape(16.dp)
 private val Separator = Color(0xFF364052)
 private val SoftPanel = Color(0xFF222C3E)
+private val CardBorder = Color(0xFF344155)
+private val FieldFill = Color(0xFF192335)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -131,7 +133,23 @@ class MainActivity : ComponentActivity() {
                 primary = Accent, onPrimary = Ink, onSurface = Color(0xFFF4F5FA),
                 onBackground = Color(0xFFF4F5FA), secondary = Mint
             )
-            MaterialTheme(colorScheme = colors) {
+            MaterialTheme(
+                colorScheme = colors.copy(
+                    surfaceVariant = SoftPanel,
+                    outline = CardBorder,
+                    outlineVariant = Separator,
+                    primaryContainer = Color(0xFF34304B),
+                    onPrimaryContainer = Color(0xFFF2EFFF),
+                    surfaceContainerHighest = SoftPanel
+                ),
+                shapes = Shapes(
+                    extraSmall = RoundedCornerShape(8.dp),
+                    small = RoundedCornerShape(10.dp),
+                    medium = RoundedCornerShape(12.dp),
+                    large = RoundedCornerShape(16.dp),
+                    extraLarge = RoundedCornerShape(20.dp)
+                )
+            ) {
                 var page by remember { mutableIntStateOf(if (intent?.action == Intent.ACTION_SEND) 2 else prefs.getInt("lastPage", 0).coerceIn(0, 4)) }
                 LaunchedEffect(page) { prefs.edit().putInt("lastPage", page).apply() }
                 var savedLinks by remember { mutableStateOf(prefs.getString("savedLinks", "")!!.lines().filter { it.isNotBlank() }) }
@@ -284,7 +302,7 @@ class MainActivity : ComponentActivity() {
                     Row(Modifier.fillMaxSize().padding(insets)) {
                         NavigationRail(
                             containerColor = Panel,
-                            modifier = Modifier.width(82.dp),
+                            modifier = Modifier.width(76.dp),
                             header = { Spacer(Modifier.height(12.dp)) }
                         ) {
                             tabs.forEachIndexed { i, name ->
@@ -301,12 +319,12 @@ class MainActivity : ComponentActivity() {
                                     )
                                 )
                                 if (i < tabs.lastIndex) HorizontalDivider(
-                                    modifier = Modifier.padding(horizontal = 18.dp),
-                                    thickness = 0.5.dp, color = Color(0xFF343B4A)
+                                    modifier = Modifier.padding(horizontal = 14.dp),
+                                    thickness = 0.5.dp, color = Separator
                                 )
                             }
                         }
-                        VerticalDivider(thickness = 1.dp, color = Color(0xFF343B4A))
+                        VerticalDivider(thickness = 1.dp, color = Separator)
                         Column(Modifier.weight(1f).fillMaxHeight()) {
                         Row(
                             Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 8.dp),
@@ -328,7 +346,7 @@ class MainActivity : ComponentActivity() {
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 item {
-                                    Surface(color = Panel, shape = Shape, tonalElevation = 1.dp) {
+                                    Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                             Text("Твоя медиатека. На телефоне.", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                                             Text("Сохраняй каналы, подготавливай описания и управляй локальным архивом.", color = Muted)
@@ -407,7 +425,7 @@ class MainActivity : ComponentActivity() {
                                             var videos by remember(channel) { mutableStateOf(listOf<Pair<String, String>>()) }
                                             var videoError by remember(channel) { mutableStateOf("") }
                                             val channelScope = rememberCoroutineScope()
-                                            Surface(color = Panel, shape = Shape, tonalElevation = 1.dp) {
+                                            Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                                     Text(channel.substringAfterLast("/").ifBlank { "YouTube-канал" }, fontWeight = FontWeight.SemiBold)
                                                     Text(channel, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
@@ -489,7 +507,7 @@ class MainActivity : ComponentActivity() {
                                 item { Text("Вставь ссылку: приложение проверит доступные форматы MP4 со звуком.", color = Muted) }
                                 item { OutlinedTextField(value = linkInput, onValueChange = { linkInput = it; linkError = "" }, label = { Text("Ссылка YouTube") }, modifier = Modifier.fillMaxWidth()) }
                                 item {
-                                    Surface(color = Panel, shape = Shape, tonalElevation = 1.dp) {
+                                    Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                             Text("Доступные форматы", color = Accent, fontWeight = FontWeight.Bold)
                                             if (inspecting) {
@@ -650,7 +668,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }, modifier = Modifier.fillMaxWidth()) { Text("Добавить в список") } }
                                 item {
-                                    Surface(color = Panel, shape = Shape, tonalElevation = 1.dp) {
+                                    Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Text("Импорт плейлиста YouTube", fontWeight = FontWeight.Bold)
                                             Text("Добавь до 100 видео одним действием. Качество и папка архива задаются один раз для всей очереди.", color = Muted, style = MaterialTheme.typography.bodySmall)
@@ -753,7 +771,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                                 item {
-                                    Surface(color = Panel, shape = Shape, tonalElevation = 1.dp) {
+                                    Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Column(Modifier.weight(1f)) {
@@ -924,7 +942,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 if (savedLinks.isEmpty()) item { EmptyPanel("↓", "Пока пусто", "Поделись ссылкой из YouTube или вставь её здесь.") }
                                 items((if (newestFirst) savedLinks else savedLinks.reversed()).filter { it.contains(linkSearch.trim(), ignoreCase = true) }) { link ->
-                                    Surface(color = Panel, shape = Shape, tonalElevation = 1.dp) {
+                                    Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                         Column(Modifier.padding(16.dp)) {
                                             Text(link, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                             OutlinedButton(onClick = {
@@ -966,7 +984,7 @@ class MainActivity : ComponentActivity() {
                                     item { SectionTitle("Архив материалов") }
                                     item { Text("Комплект сохраняется в RobotPost / Имя канала / ДД.ММ.ГГ Название видео.", color = Muted) }
                                     item {
-                                        Surface(color = Panel, shape = Shape, tonalElevation = 1.dp) {
+                                        Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                                 Text("Папка для сохранения", fontWeight = FontWeight.Bold)
                                                 Text(if (chosenRoot.isBlank()) "Папка не выбрана" else "Папка выбрана. Доступ сохранён.", color = Muted)
@@ -978,7 +996,7 @@ class MainActivity : ComponentActivity() {
                                     item { OutlinedTextField(value = packageTitle, onValueChange = { packageTitle = it }, label = { Text("Название видео") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
                                     item { OutlinedTextField(value = packageDate, onValueChange = { packageDate = it }, label = { Text("Дата публикации ДД.ММ.ГГ") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
                                     item {
-                                        Surface(color = Panel, shape = Shape, tonalElevation = 1.dp) {
+                                        Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                                 Text("Медиафайлы", fontWeight = FontWeight.Bold)
                                                 Text(if (chosenVideo.isBlank()) "Видео не выбрано" else "Видео выбрано", color = Muted)
@@ -1032,7 +1050,7 @@ class MainActivity : ComponentActivity() {
                                     if (history.isEmpty()) item { Text("Сохранений пока нет. Новые комплекты появятся здесь.", color = Muted) }
                                     items(history.filter { it.optString("playlist").isNotBlank() }
                                         .groupBy { it.optString("playlist") }.toList()) { (playlist, entries) ->
-                                        Surface(color = Panel, shape = Shape, tonalElevation = 1.dp) {
+                                        Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     Column(Modifier.weight(1f)) {
@@ -1072,7 +1090,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                     items(history.filter { it.optString("playlist").isBlank() }) { entry ->
-                                        Surface(color = Panel, shape = Shape, tonalElevation = 1.dp) {
+                                        Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     Text(entry.optString("name", "Комплект"), fontWeight = FontWeight.SemiBold,
@@ -1233,7 +1251,7 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 item { SectionTitle("Параметры загрузки") }
                                 item {
-                                    Surface(color = Panel, shape = Shape, tonalElevation = 1.dp) {
+                                    Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                             Text("Предпочитаемое качество", fontWeight = FontWeight.SemiBold)
                                             listOf("Лучшее доступное", "1080p", "720p", "480p").forEach { option ->
@@ -1254,7 +1272,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                                 item {
-                                    Surface(color = Panel, shape = Shape, tonalElevation = 1.dp) {
+                                    Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                         Column(Modifier.padding(16.dp)) {
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Column(Modifier.weight(1f)) {
@@ -1268,7 +1286,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 item { SectionTitle("Резервное копирование") }
                                 item {
-                                    Surface(color = Panel, shape = Shape, tonalElevation = 1.dp) {
+                                    Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                             Text("Сохраняются каналы, ссылки, описание и качество. Скачанные файлы в архив не входят.", color = Muted)
                                             Button(onClick = { exportBackup.launch("robotpost-backup.json") }, modifier = Modifier.fillMaxWidth()) {
@@ -1295,7 +1313,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun Metric(label: String, value: String, modifier: Modifier = Modifier) {
-    Surface(modifier = modifier, color = Panel, shape = Shape) {
+    Surface(modifier = modifier, color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Accent)
             Text(label, color = Muted)
@@ -1305,12 +1323,15 @@ private fun Metric(label: String, value: String, modifier: Modifier = Modifier) 
 
 @Composable
 private fun SectionTitle(title: String) {
-    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        HorizontalDivider(thickness = 1.dp, color = Separator)
+    }
 }
 
 @Composable
 private fun ActionTile(icon: String, title: String, subtitle: String, action: () -> Unit) {
-    Surface(color = Panel, shape = Shape, modifier = Modifier.fillMaxWidth().clickable(onClick = action)) {
+    Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), modifier = Modifier.fillMaxWidth().clickable(onClick = action)) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(icon, color = Accent, style = MaterialTheme.typography.headlineMedium)
             Column(Modifier.weight(1f)) {
@@ -1326,7 +1347,7 @@ private fun ActionTile(icon: String, title: String, subtitle: String, action: ()
 
 @Composable
 private fun EmptyPanel(symbol: String, title: String, subtitle: String) {
-    Surface(color = Panel, shape = Shape, modifier = Modifier.fillMaxWidth()) {
+    Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), modifier = Modifier.fillMaxWidth()) {
         Column(
             Modifier.padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
