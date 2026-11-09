@@ -178,7 +178,8 @@ class MainActivity : ComponentActivity() {
                 var queueQuality by remember { mutableStateOf(prefs.getString("queueQuality", "720") ?: "720") }
                 var includeDescription by remember { mutableStateOf(prefs.getBoolean("includeDescription", true)) }
                 var singleSaveMode by remember { mutableStateOf(prefs.getString("singleSaveMode", "full") ?: "full") }
-                var playlistVideoOnly by remember { mutableStateOf(prefs.getBoolean("playlistVideoOnly", false)) }
+                var playlistSaveMode by remember { mutableStateOf(prefs.getString("playlistSaveMode", if (prefs.getBoolean("playlistVideoOnly", false)) "video" else "full") ?: "full") }
+                var playlistVideoOnly by remember { mutableStateOf(playlistSaveMode == "video") }
                 var queueVideoOnly by remember { mutableStateOf(prefs.getBoolean("queueVideoOnly", false)) }
                 var expandedArchive by remember { mutableStateOf(setOf<String>()) }
                 var queueDetailsExpanded by remember { mutableStateOf(false) }
@@ -749,7 +750,10 @@ class MainActivity : ComponentActivity() {
                                                                 if (entry.second in playlistSelected) {
                                                                     metadata.put(entry.second, JSONObject()
                                                                         .put("title", playlistPreviewTitle)
-                                                                        .put("index", index + 1))
+                                                                        .put("index", index + 1)
+                                                                        .put("mode", playlistSaveMode)
+                                                                        .put("quality", queueQuality)
+                                                                        .put("root", chosenRoot))
                                                                 }
                                                             }
                                                             prefs.edit()
@@ -782,14 +786,16 @@ class MainActivity : ComponentActivity() {
                                             Text("Для очереди выбирается максимальное качество из настроек. Для одиночного видео доступны все совместимые форматы. Ошибочные загрузки сохраняются для повторной попытки.", color = Muted, style = MaterialTheme.typography.bodySmall)
                                             HorizontalDivider(thickness = 1.dp, color = Separator)
                                             SaveModeDropdown(
-                                                selected = if (playlistVideoOnly) "video" else "full",
+                                                selected = playlistSaveMode,
                                                 onSelect = { mode ->
+                                                    playlistSaveMode = mode
                                                     playlistVideoOnly = mode == "video"
-                                                    if (playlistVideoOnly && queueQuality == "audio") queueQuality = "720"
-                                                    prefs.edit().putBoolean("playlistVideoOnly", playlistVideoOnly)
+                                                    if (mode != "audio" && queueQuality == "audio") queueQuality = "720"
+                                                    if (mode == "audio") queueQuality = "audio"
+                                                    prefs.edit().putString("playlistSaveMode", mode)
+                                                        .putBoolean("playlistVideoOnly", playlistVideoOnly)
                                                         .putString("queueQuality", queueQuality).apply()
-                                                },
-                                                modes = listOf("full", "video")
+                                                }
                                             )
                                             if (playlistVideoOnly) Text(
                                                 "Видео плейлиста сохраняются в общей папке с его названием.",
@@ -802,7 +808,7 @@ class MainActivity : ComponentActivity() {
                                                             queueQuality = quality
                                                             prefs.edit().putString("queueQuality", quality).apply()
                                                         },
-                                                        enabled = !queueRunning && queueQuality != quality && !(playlistVideoOnly && quality == "audio"),
+                                                        enabled = !queueRunning && queueQuality != quality && !(playlistSaveMode != "audio" && quality == "audio") && !(playlistSaveMode == "audio" && quality != "audio"),
                                                         modifier = Modifier.weight(1f),
                                                         contentPadding = PaddingValues(horizontal = 2.dp)
                                                     ) { Text(if (quality == "audio") "M4A" else quality + "p") }
