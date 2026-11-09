@@ -305,8 +305,8 @@ class MainActivity : ComponentActivity() {
                 var quality by remember { mutableStateOf(prefs.getString("quality", "Лучшее доступное") ?: "Лучшее доступное") }
                 var autoCheck by remember { mutableStateOf(prefs.getBoolean("autoCheck", false)) }
                 var description by remember { mutableStateOf(prefs.getString("description", "") ?: "") }
-                val tabs = listOf("Главная", "Каналы", "Загрузки", "Архив", "Настройки")
-                val glyphs = listOf("⌂", "▣", "⇩", "▤", "⚙")
+                val tabs = listOf("Главная", "Каналы", "Загрузки", "Сборка", "Архив", "Настройки")
+                val glyphs = listOf("⌂", "▣", "⇩", "⊕", "▤", "⚙")
                 Scaffold(containerColor = Ink) { insets ->
                     Row(Modifier.fillMaxSize().padding(insets)) {
                         NavigationRail(
@@ -957,7 +957,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 }
-                                if (savedLinks.isEmpty()) item { EmptyPanel("↓", "Пока пусто", "Поделись ссылкой из YouTube или вставь её здесь.") }
+                                if (savedLinks.isEmpty()) item { Text("Вставь ссылку выше, чтобы начать одиночную загрузку.", color = Muted, style = MaterialTheme.typography.bodySmall) }
                                 items((if (newestFirst) savedLinks else savedLinks.reversed()).filter { it.contains(linkSearch.trim(), ignoreCase = true) }) { link ->
                                     Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                         Column(Modifier.padding(16.dp)) {
@@ -998,7 +998,7 @@ class MainActivity : ComponentActivity() {
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    item { SectionTitle("Архив материалов") }
+                                    item { SectionTitle("Ручная сборка") }
                                     item { Text("Комплект сохраняется в RobotPost / Имя канала / ДД.ММ.ГГ Название видео.", color = Muted) }
                                     item {
                                         Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
@@ -1058,6 +1058,14 @@ class MainActivity : ComponentActivity() {
                                     }
                                     if (result.isNotBlank()) item { Text(result, color = if (result.startsWith("Ошибка")) Color(0xFFFF9999) else Mint) }
                                     item { Text("Здесь можно также вручную собрать комплект из файлов телефона. Автоматическое скачивание находится на вкладке «Загрузки».", color = Muted) }
+                                }
+                            }
+                            4 -> LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                item { SectionTitle("Архив сохранений") }
                                     item {
                                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                                             Text("История сохранений (${history.size})", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -1259,9 +1267,8 @@ class MainActivity : ComponentActivity() {
                                             dismissButton = { TextButton(onClick = { clearHistoryConfirm = false }) { Text("Отмена") } }
                                         )
                                     }
-                                }
                             }
-                            4 -> LazyColumn(
+                            5 -> LazyColumn(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
