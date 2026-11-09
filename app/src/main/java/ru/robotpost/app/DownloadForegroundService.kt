@@ -94,13 +94,15 @@ class DownloadForegroundService : Service() {
                 val url = pending.first()
                 try {
                     status("Проверяю: " + url)
-                    val playlistMode = prefs.getBoolean("playlistVideoOnly", false)
+                    val job = runCatching { JSONObject(prefs.getString("singleJobMap", "{}") ?: "{}").optJSONObject(url) }.getOrNull()
+                    val playlistMode = job == null && prefs.getBoolean("playlistVideoOnly", false)
                     val playlistMeta = runCatching {
                         JSONObject(prefs.getString("playlistVideoMap", "{}") ?: "{}").optJSONObject(url)
                     }.getOrNull()
                     val quality = if (playlistMode && prefs.getString("queueQuality", "720") == "audio")
                         "720" else prefs.getString("queueQuality", "720") ?: "720"
-                    val root = prefs.getString("archiveRoot", "").orEmpty()
+                    val root = job?.optString("root")?.takeIf { it.isNotBlank() }
+                        ?: prefs.getString("archiveRoot", "").orEmpty()
                     require(root.isNotBlank()) { "Не выбрана папка архива" }
                     val info = withContext(Dispatchers.IO) { DownloadEngine.inspect(this@DownloadForegroundService, url) }
                     if (stopping) break
@@ -110,23 +112,24 @@ class DownloadForegroundService : Service() {
                             if (quality == "audio") it.optString("kind") == "audio"
                             else it.optString("kind") != "audio" && it.optInt("height", 0) > 0
                         }
-                    val selected = if (quality == "audio") candidates.firstOrNull()
+                    val selected = if (job != null) null else if (quality == "audio") candidates.firstOrNull()
                         else candidates.filter { it.optInt("height", 0) <= quality.toInt() }
                             .maxWithOrNull(compareBy<JSONObject> { it.optInt("height", 0) }
                                 .thenBy { if (it.optString("kind") == "single") 1 else 0 })
                             
-                    require(selected != null) { "Нет доступных совместимых форматов" }
-                    if (quality != "audio" && selected.optInt("height", 0) != quality.toInt())
-                        status("Доступно ${selected.optInt("height", 0)}p вместо ${quality}p")
+                    require(job != null || selected != null) { "Нет доступных совместимых форматов" }
+                    if (job == null && quality != "audio" && selected!!.optInt("height", 0) != quality.toInt())
+                        status("Доступно ${selected!!.optInt("height", 0)}p вместо ${quality}p")
                     status("Скачиваю: " + info.optString("title", url))
                     val saved = withContext(Dispatchers.IO) {
-                        DownloadEngine.download(this@DownloadForegroundService, url, Uri.parse(root), selected.getString("id"),
+                        DownloadEngine.download(this@DownloadForegroundService, url, Uri.parse(root), job?.getString("format") ?: selected!!.getString("id"),
                             onTemp = { activeTemp = it },
                             onProgress = { progress -> status(progress) },
-                            includeDescription = prefs.getBoolean("includeDescription", true),
+                            includeDescription = job?.optBoolean("description") ?: prefs.getBoolean("includeDescription", true),
                             videoOnly = playlistMode && playlistMeta == null,
                             playlistName = if (playlistMode) playlistMeta?.optString("title").orEmpty() else "",
-                            playlistIndex = if (playlistMode) playlistMeta?.optInt("index", 0) ?: 0 else 0)
+                            playlistIndex = if (playlistMode) playlistMeta?.optInt("index", 0) ?: 0 else 0,
+                            saveMode = job?.optString("mode", "full") ?: "full")
                     }
                     DownloadHistory.add(this@DownloadForegroundService, saved, url,
                         if (playlistMode) playlistMeta?.optString("title").orEmpty() else "")
@@ -140,6 +143,13 @@ class DownloadForegroundService : Service() {
                     prefs.edit()
                         .putString("failedQueue", previousFailures.joinToString("\n"))
                         .putString("failureReasons", previousReasons.toString()).commit()
+                    if (job != null) {
+                        val jobs = JSONObject(prefs.getString("singleJobMap", "{}") ?: "{}")
+                        jobs.remove(url)
+                        check(prefs.edit().putString("singleJobMap", jobs.toString()).commit()) {
+                            "Не удалось обновить параметры заданий"
+                        }
+                    }
                     completed++
                 } catch (e: Exception) {
                     if (stopping) break
