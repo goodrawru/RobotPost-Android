@@ -548,8 +548,8 @@ class MainActivity : ComponentActivity() {
                                                         onDismissRequest = { showFormatPicker = false },
                                                         title = { Text("Выбери доступный формат") },
                                                         text = {
-                                                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                                formatChoices.forEach { choice ->
+                                                            LazyColumn(modifier = Modifier.heightIn(max = 440.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                                items(formatChoices) { choice ->
                                                                     Row(
                                                                         verticalAlignment = Alignment.CenterVertically,
                                                                         modifier = Modifier.fillMaxWidth().clickable {
