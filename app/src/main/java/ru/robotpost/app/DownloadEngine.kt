@@ -113,7 +113,7 @@ object DownloadEngine {
             return ArchiveExporter.export(
                 context, root,
                 info.optString("channel", "YouTube"), info.optString("title", "Видео"),
-                date, cleanDescription(info.optString("description", "")),
+                date, buildTxtDescription(info),
                 exportVideo?.let { Uri.fromFile(it) },
                 exportAudio?.let { Uri.fromFile(it) },
                 "audio.m4a",
@@ -126,9 +126,32 @@ object DownloadEngine {
         }
     }
 
-    private fun cleanDescription(value: String): String =
-        value.lines().filterNot {
-            Regex("(?i)(реклама|спонсор|промокод|партн[её]рская ссылка|advertisement|sponsored|promo code|affiliate link)")
-                .containsMatchIn(it)
-        }.joinToString("\n").trim()
+    /** Strict TXT: title, @minaevcast, and only source-provided timestamps. */
+    private fun buildTxtDescription(info: JSONObject): String {
+        val title = info.optString("title", "Видео").trim().ifBlank { "Видео" }
+        val chapters = info.optJSONArray("chapters")
+        val timestamps = mutableListOf<String>()
+        if (chapters != null) {
+            for (i in 0 until chapters.length()) {
+                val chapter = chapters.optJSONObject(i) ?: continue
+                val seconds = chapter.optDouble("start_time", -1.0)
+                val name = chapter.optString("title").trim()
+                if (!seconds.isFinite() || seconds < 0 || name.isBlank()) continue
+                val total = seconds.toLong()
+                val stamp = if (total >= 3600)
+                    "%02d:%02d:%02d".format(Locale.ROOT, total / 3600, (total / 60) % 60, total % 60)
+                else "%02d:%02d".format(Locale.ROOT, total / 60, total % 60)
+                timestamps.add("$stamp — $name")
+            }
+        }
+        if (timestamps.isEmpty()) {
+            val pattern = Regex("""^\\s*((?:\\d{1,2}:)?\\d{1,2}:\\d{2})\\s*[-–—.:)]?\\s*(\\S.*)$""")
+            for (line in info.optString("description", "").lines()) {
+                val match = pattern.find(line) ?: continue
+                timestamps.add(match.groupValues[1] + " — " + match.groupValues[2].trim())
+            }
+        }
+        return listOf(title, "@minaevcast").joinToString("\\n\\n") +
+            if (timestamps.isEmpty()) "" else "\\n\\n" + timestamps.distinct().joinToString("\\n")
+    }
 }
