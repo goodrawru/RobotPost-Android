@@ -222,6 +222,8 @@ def download_video(url, directory, choice):
         "channel": info.get("channel") or info.get("uploader") or "YouTube",
         "date": info.get("upload_date") or "",
         "description": info.get("description") or "",
+        "chapters": [{"start_time": chapter.get("start_time"), "title": chapter.get("title") or ""}
+                     for chapter in (info.get("chapters") or [])],
     }, ensure_ascii=False)
 
 def latest_channel_videos(channel_url):
