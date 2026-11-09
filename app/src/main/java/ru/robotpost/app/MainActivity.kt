@@ -1340,14 +1340,14 @@ private fun QueueQualityDropdown(
         Box {
             OutlinedButton(onClick = { expanded = true }, enabled = enabled,
                 modifier = Modifier.fillMaxWidth()) {
-                Text(if (selected == "audio") "Аудио · M4A" else "Видео · $" + "{selected}p",
+                Text(if (selected == "audio") "Аудио · M4A" else "Видео · ${selected}p",
                     modifier = Modifier.weight(1f))
                 Text(" ▾")
             }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 qualities.forEach { quality ->
                     DropdownMenuItem(
-                        text = { Text(if (quality == "audio") "Аудио · M4A" else "Видео · $" + "{quality}p") },
+                        text = { Text(if (quality == "audio") "Аудио · M4A" else "Видео · ${quality}p") },
                         onClick = { onSelect(quality); expanded = false }
                     )
                 }
