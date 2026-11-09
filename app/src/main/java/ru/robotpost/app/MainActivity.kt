@@ -186,6 +186,10 @@ class MainActivity : ComponentActivity() {
                 var failedDetailsExpanded by remember { mutableStateOf(false) }
                 var linkInput by remember { mutableStateOf(if (intent?.action == Intent.ACTION_SEND) (intent.getStringExtra(Intent.EXTRA_TEXT) ?: "") else "") }
                 var linkError by remember { mutableStateOf("") }
+                var queueTotal by remember { mutableIntStateOf(0) }
+                var queueProcessed by remember { mutableIntStateOf(0) }
+                var queueItemPercent by remember { mutableIntStateOf(0) }
+                var queueItemTitle by remember { mutableStateOf("") }
                 var downloadBusy by remember { mutableStateOf(false) }
                 var activeDownloadDirectory by remember { mutableStateOf<java.io.File?>(null) }
                 var history by remember { mutableStateOf(DownloadHistory.list(this@MainActivity)) }
@@ -193,6 +197,10 @@ class MainActivity : ComponentActivity() {
                     while (true) {
                         val running = prefs.getBoolean("queueWasRunning", false)
                         queueRunning = running
+                        queueTotal = prefs.getInt("queueTotal", 0)
+                        queueProcessed = prefs.getInt("queueProcessed", 0)
+                        queueItemPercent = prefs.getInt("queueItemPercent", 0)
+                        queueItemTitle = prefs.getString("queueItemTitle", "").orEmpty()
                         if (running || prefs.getString("queueServiceStatus", "").orEmpty().isNotBlank()) {
                             queueStatus = prefs.getString("queueServiceStatus", "").orEmpty()
                         }
@@ -845,6 +853,22 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             ) { Text(if (queueRunning) "◌  Очередь выполняется..." else "↓  Скачать всю очередь") }
                                             if (queueStatus.isNotBlank()) Text(queueStatus, color = if (queueStatus.startsWith("Очередь остановлена")) Color(0xFFFF9999) else Mint)
+                                            if (queueRunning && queueTotal > 0) {
+                                                Text("Текущий ролик: " + queueItemTitle, maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                                                LinearProgressIndicator(
+                                                    progress = { queueItemPercent / 100f },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                                Text("$" + "{queueItemPercent}% · текущий файл", color = Muted,
+                                                    style = MaterialTheme.typography.labelSmall)
+                                                LinearProgressIndicator(
+                                                    progress = { (queueProcessed.toFloat() / queueTotal).coerceIn(0f, 1f) },
+                                                    modifier = Modifier.fillMaxWidth(), color = Mint
+                                                )
+                                                Text("$" + "{queueProcessed} из $" + "{queueTotal} · обработано в очереди",
+                                                    color = Muted, style = MaterialTheme.typography.labelSmall)
+                                            }
                                             if (queueRunning) OutlinedButton(
                                                 onClick = {
                                                     startService(Intent(this@MainActivity, DownloadForegroundService::class.java)
