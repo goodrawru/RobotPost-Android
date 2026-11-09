@@ -247,7 +247,7 @@ class MainActivity : ComponentActivity() {
                     ))
                     if (playlistLink) {
                         playlistUrl = inputUrl
-                        inspectStatus = "Это плейлист. Открой раздел «Импорт плейлиста YouTube» ниже, чтобы выбрать видео."
+                        inspectStatus = "Плейлист распознан. Выберите ролики для очереди."
                         return@LaunchedEffect
                     }
                     delay(700)
@@ -305,6 +305,14 @@ class MainActivity : ComponentActivity() {
                 var quality by remember { mutableStateOf(prefs.getString("quality", "Лучшее доступное") ?: "Лучшее доступное") }
                 var autoCheck by remember { mutableStateOf(prefs.getBoolean("autoCheck", false)) }
                 var description by remember { mutableStateOf(prefs.getString("description", "") ?: "") }
+                val unifiedPlaylistLink = remember(linkInput) {
+                    runCatching {
+                        val uri = Uri.parse(linkInput.trim())
+                        uri.host?.lowercase() in listOf("youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com") &&
+                            (uri.path == "/playlist" || (uri.getQueryParameter("list") != null &&
+                                uri.getQueryParameter("v").isNullOrBlank()))
+                    }.getOrDefault(false)
+                }
                 val tabs = listOf("Главная", "Каналы", "Загрузки", "Сборка", "Архив", "Настройки")
                 val glyphs = listOf("⌂", "▣", "⇩", "⊕", "▤", "⚙")
                 val railLabels = listOf("Главная", "Каналы", "Загрузки", "Сборка", "Архив", "Опции")
@@ -513,10 +521,10 @@ class MainActivity : ComponentActivity() {
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                item { Text("Список видео", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-                                item { Text("Вставь ссылку: приложение проверит доступные форматы MP4 со звуком.", color = Muted) }
-                                item { OutlinedTextField(value = linkInput, onValueChange = { linkInput = it; linkError = "" }, label = { Text("Ссылка YouTube") }, modifier = Modifier.fillMaxWidth()) }
-                                item {
+                                item { SectionTitle("Видео или плейлист") }
+                                item { OutlinedTextField(value = linkInput, onValueChange = { linkInput = it; linkError = "" }, label = { Text("Одна ссылка YouTube") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+                                if (linkInput.isNotBlank()) item { Text(if (unifiedPlaylistLink) "Распознан плейлист · можно выбрать ролики" else "Одиночное видео · выбор качества и сохранение", color = Mint, style = MaterialTheme.typography.bodySmall) }
+                                if (!unifiedPlaylistLink && linkInput.isNotBlank()) item {
                                     Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                             Text("Доступные форматы", color = Accent, fontWeight = FontWeight.Bold)
@@ -645,53 +653,18 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 if (linkError.isNotEmpty()) item { Text(linkError, color = Color(0xFFFF9999)) }
-                                item { OutlinedTextField(value = linkSearch, onValueChange = { linkSearch = it }, label = { Text("Поиск по ссылкам") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
-                                item {
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        TextButton(onClick = { newestFirst = !newestFirst }) { Text(if (newestFirst) "Сначала новые" else "Сначала старые") }
-                                        TextButton(onClick = { confirmClear = true }, enabled = savedLinks.isNotEmpty()) { Text("Очистить") }
-                                    }
-                                }
-                                if (confirmClear) item {
-                                    AlertDialog(
-                                        onDismissRequest = { confirmClear = false },
-                                        title = { Text("Очистить список?") },
-                                        text = { Text("Удаляются только сохранённые ссылки, не файлы.") },
-                                        confirmButton = { TextButton(onClick = {
-                                            savedLinks = emptyList()
-                                            prefs.edit().remove("savedLinks").apply()
-                                            confirmClear = false
-                                        }) { Text("Удалить") } },
-                                        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Отмена") } }
-                                    )
-                                }
-                                item { Button(onClick = {
-                                    val link = linkInput.trim().split(" ").firstOrNull { it.contains("youtu.be/") || it.contains("youtube.com/") }?.trim()
-                                    if (link == null || !link.startsWith("https://")) linkError = "Укажи HTTPS-ссылку YouTube"
-                                    else if (link in savedLinks) linkError = "Ссылка уже добавлена"
-                                    else {
-                                        savedLinks = listOf(link) + savedLinks
-                                        prefs.edit().putString("savedLinks", savedLinks.joinToString("\n")).apply()
-                                        linkInput = ""
-                                    }
-                                }, modifier = Modifier.fillMaxWidth()) { Text("Добавить в список") } }
-                                item {
+                                if (unifiedPlaylistLink) item {
                                     Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("Импорт плейлиста YouTube", fontWeight = FontWeight.Bold)
-                                            Text("Добавь до 100 видео одним действием. Качество и папка архива задаются один раз для всей очереди.", color = Muted, style = MaterialTheme.typography.bodySmall)
-                                            OutlinedTextField(
-                                                value = playlistUrl, onValueChange = { playlistUrl = it },
-                                                label = { Text("Ссылка на плейлист") },
-                                                singleLine = true, modifier = Modifier.fillMaxWidth()
-                                            )
+                                            Text("Выбрать ролики плейлиста", fontWeight = FontWeight.Bold)
+                                            Text("До 100 роликов. Настройки сохранения применяются ко всей выбранной очереди.", color = Muted, style = MaterialTheme.typography.bodySmall)
                                             Button(
-                                                enabled = !playlistBusy && !queueRunning && playlistUrl.startsWith("https://"),
+                                                enabled = !playlistBusy && !queueRunning && unifiedPlaylistLink,
                                                 modifier = Modifier.fillMaxWidth(),
                                                 onClick = {
                                                     playlistBusy = true
                                                     playlistStatus = "Получаю список роликов..."
-                                                    val requestedPlaylist = playlistUrl.trim()
+                                                    val requestedPlaylist = linkInput.trim()
                                                     downloadScope.launch {
                                                         try {
                                                             val result = withContext(Dispatchers.IO) {
