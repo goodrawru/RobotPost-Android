@@ -134,7 +134,10 @@ def _inspect_best(url):
                             "warnings": warnings[:8]})
             if best_info is None or max((x["height"] for x in choices), default=0) > max((x["height"] for x in best_choices), default=0):
                 best_info, best_choices, best_profile = info, choices, profile
-            if max((x["height"] for x in best_choices), default=0) >= 2160:
+            # Most ordinary YouTube videos expose a useful stream on the
+            # first client. Stop probing fallback clients once a sound-capable
+            # 720p option with the original Russian track is available.
+            if max((x["height"] for x in best_choices), default=0) >= 720:
                 break
         except Exception as exc:
             failures.append(str(exc)[:180])
