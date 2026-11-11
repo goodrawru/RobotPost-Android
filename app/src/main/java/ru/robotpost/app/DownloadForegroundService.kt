@@ -1,6 +1,7 @@
 package ru.robotpost.app
 
 import android.app.Notification
+import android.app.PendingIntent
 import android.Manifest
 import android.content.pm.PackageManager
 import android.app.NotificationChannel
@@ -38,19 +39,45 @@ class DownloadForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private fun queueNotification(message: String): Notification {
+        val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        val openActivity = PendingIntent.getActivity(
+            this,
+            ID,
+            Intent(this, MainActivity::class.java).addFlags(
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            ),
+            pendingFlags
+        )
+        val stopQueue = PendingIntent.getService(
+            this,
+            ID + 1,
+            Intent(this, DownloadForegroundService::class.java).setAction(ACTION_STOP),
+            pendingFlags
+        )
+        val percent = Regex("""(\\d{1,3})%""")
+            .find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 100)
+        val active = percent != null || message.startsWith("Проверяю:") ||
+            message.startsWith("Скачиваю:") || message.startsWith("Объединяю") ||
+            message.startsWith("Сохраняю")
+        val builder = Notification.Builder(this, CHANNEL)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("RobotPost · очередь")
+            .setContentText(message.take(110))
+            .setContentIntent(openActivity)
+            .setOnlyAlertOnce(true)
+            .setOngoing(true)
+            .addAction(android.R.drawable.ic_media_pause, "Остановить очередь", stopQueue)
+        if (active) builder.setProgress(100, percent ?: 0, percent == null)
+        return builder.build()
+    }
+
     private fun status(message: String) {
         getSharedPreferences("robotpost", Context.MODE_PRIVATE).edit()
             .putString("queueServiceStatus", message).apply()
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        val notification = Notification.Builder(this, CHANNEL)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("RobotPost · очередь")
-            .setContentText(message.take(110))
-            .setOnlyAlertOnce(true)
-            .setOngoing(true)
-            .build()
         if (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
-            manager.notify(ID, notification)
+            manager.notify(ID, queueNotification(message))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -67,12 +94,7 @@ class DownloadForegroundService : Service() {
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL, "Фоновая загрузка RobotPost", NotificationManager.IMPORTANCE_LOW)
         )
-        val notification = Notification.Builder(this, CHANNEL)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("RobotPost · очередь")
-            .setContentText("Подготовка загрузки")
-            .setOngoing(true)
-            .build()
+        val notification = queueNotification("Подготовка загрузки")
         if (Build.VERSION.SDK_INT >= 29)
             startForeground(ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         else startForeground(ID, notification)
