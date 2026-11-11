@@ -26,8 +26,10 @@ def _options(profile="legacy"):
         "alternate": ["web_safari", "ios", "android"],
         "tv": ["tv", "web"],
     }
+    # Ask YouTube for Russian translated metadata when the uploader provides it.
+    opts["extractor_args"] = {"youtube": {"lang": ["ru"]}}
     if profile in clients:
-        opts["extractor_args"] = {"youtube": {"player_client": clients[profile]}}
+        opts["extractor_args"]["youtube"]["player_client"] = clients[profile]
     return opts
 
 def _available(info):
@@ -247,7 +249,24 @@ def latest_channel_videos(channel_url):
         if not link.startswith("https://"):
             link = "https://www.youtube.com/watch?v=" + str(video_id or "")
         if video_id and link.startswith("https://"):
-            result.append({"title": item.get("title") or "Видео", "url": link})
+            title = item.get("title") or "Видео"
+            published_at = item.get("upload_date") or ""
+            # Flat channel entries may omit exact dates and localized titles.
+            # Resolve each of the five videos individually, keeping the channel
+            # list usable if one video's metadata cannot be read.
+            try:
+                with YoutubeDL(_options()) as detail_ydl:
+                    detail = detail_ydl.extract_info(link, download=False)
+                if detail:
+                    title = detail.get("title") or title
+                    published_at = detail.get("upload_date") or published_at
+            except Exception:
+                pass
+            if len(published_at) == 8 and published_at.isdigit():
+                published_at = f"{published_at[6:8]}.{published_at[4:6]}.{published_at[:4]}"
+            else:
+                published_at = ""
+            result.append({"title": title, "url": link, "published_at": published_at})
         if len(result) == 5:
             break
     return json.dumps(result, ensure_ascii=False)

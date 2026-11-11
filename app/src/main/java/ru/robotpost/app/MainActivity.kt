@@ -440,7 +440,7 @@ class MainActivity : ComponentActivity() {
                                         items(channels.filter { it.contains(channelSearch.trim(), ignoreCase = true) }) { channel ->
                                             var expanded by remember(channel) { mutableStateOf(false) }
                                             var loadingVideos by remember(channel) { mutableStateOf(false) }
-                                            var videos by remember(channel) { mutableStateOf(listOf<Pair<String, String>>()) }
+                                            var videos by remember(channel) { mutableStateOf(listOf<DownloadEngine.LatestVideo>()) }
                                             var videoError by remember(channel) { mutableStateOf("") }
                                             val channelScope = rememberCoroutineScope()
                                             Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
@@ -481,7 +481,15 @@ class MainActivity : ComponentActivity() {
                                                                 }
                                                             }
                                                         }
-                                                    ) { Text(if (expanded) "Скрыть последние видео" else "Последние 5 видео ▾") }
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Text("Последние 5 видео", modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                            Text(if (expanded) "⌃" else "⌄", color = Accent)
+                                                        }
+                                                    }
                                                     if (expanded) {
                                                         if (loadingVideos) {
                                                             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -490,9 +498,27 @@ class MainActivity : ComponentActivity() {
                                                         if (videoError.isNotBlank()) Text(videoError, color = Color(0xFFFF9999), style = MaterialTheme.typography.bodySmall)
                                                         videos.forEach { video ->
                                                             HorizontalDivider(color = Muted.copy(alpha = 0.2f))
-                                                            Text(video.first, fontWeight = FontWeight.Medium)
+                                                            Row(
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                                verticalAlignment = Alignment.Top,
+                                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                            ) {
+                                                                Text(
+                                                                    video.title,
+                                                                    modifier = Modifier.weight(1f),
+                                                                    fontWeight = FontWeight.Medium,
+                                                                    maxLines = 3,
+                                                                    overflow = TextOverflow.Ellipsis
+                                                                )
+                                                                Text(
+                                                                    video.publishedAt.ifBlank { "—" },
+                                                                    color = Muted,
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    maxLines = 1
+                                                                )
+                                                            }
                                                             Button(onClick = {
-                                                                linkInput = video.second
+                                                                linkInput = video.url
                                                                 page = 2
                                                             }, modifier = Modifier.fillMaxWidth()) { Text("Выбрать для скачивания") }
                                                         }

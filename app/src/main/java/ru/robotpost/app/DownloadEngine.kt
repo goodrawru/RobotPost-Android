@@ -11,6 +11,8 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
+data class LatestVideo(val title: String, val url: String, val publishedAt: String)
+
 object DownloadEngine {
     /** Translate common transport failures into actionable Russian messages. */
     fun readableError(error: Throwable): String {
@@ -36,12 +38,16 @@ object DownloadEngine {
         return Python.getInstance()
     }
 
-    fun latest(context: Context, channelUrl: String): List<Pair<String, String>> {
+    fun latest(context: Context, channelUrl: String): List<LatestVideo> {
         val json = org.json.JSONArray(python(context).getModule("downloader")
             .callAttr("latest_channel_videos", channelUrl).toString())
         return (0 until json.length()).map { i ->
             val item = json.getJSONObject(i)
-            item.optString("title", "Видео") to item.getString("url")
+            LatestVideo(
+                title = item.optString("title", "Видео"),
+                url = item.getString("url"),
+                publishedAt = item.optString("published_at", "")
+            )
         }
     }
 
