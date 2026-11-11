@@ -32,28 +32,51 @@ def _options(profile="legacy"):
         opts["extractor_args"]["youtube"]["player_client"] = clients[profile]
     return opts
 
+def _is_russian_audio(fmt, fallback_language=None):
+    # yt-dlp exposes the audio language per stream when the source provides it.
+    # Never silently substitute an English/unknown-language stream.
+    for value in (fmt.get("language"), fmt.get("audio_language"),
+                  fmt.get("audio_track_language"), fmt.get("format_note"),
+                  fallback_language):
+        if not value:
+            continue
+        language = str(value).strip().lower().replace("_", "-")
+        if language in ("ru", "russian", "русский") or language.startswith(("ru-", "russian-", "русский-")):
+            return True
+        # Some extractors include a language tag in a short format note.
+        if language.startswith("[ru]") or language.startswith("(ru)") or language.startswith("ru "):
+            return True
+    return False
+
+
 def _available(info):
     formats = [f for f in (info.get("formats") or []) if f.get("url")]
+    source_language = info.get("language")
+    # Only present video choices that already contain Russian audio, or can be
+    # muxed with a Russian AAC stream. Silent video streams are never shown as
+    # standalone choices.
     combined = [f for f in formats if f.get("ext") == "mp4"
                 and f.get("vcodec") not in (None, "none")
-                and f.get("acodec") not in (None, "none")]
+                and f.get("acodec") not in (None, "none")
+                and str(f.get("vcodec") or "").startswith(("avc1", "h264"))
+                and str(f.get("acodec") or "").startswith(("mp4a", "aac"))
+                and _is_russian_audio(f, source_language)]
     video = [f for f in formats if f.get("ext") == "mp4"
              and str(f.get("vcodec") or "").startswith(("avc1", "h264"))
              and f.get("acodec") == "none"]
     audio = [f for f in formats if f.get("ext") in ("m4a", "mp4")
              and str(f.get("acodec") or "").startswith(("mp4a", "aac"))
-             and f.get("vcodec") == "none"]
+             and f.get("vcodec") == "none"
+             and _is_russian_audio(f, source_language)]
     best_audio = max(audio, key=lambda f: f.get("abr") or f.get("tbr") or 0, default=None)
-    # Expose every compatible, URL-backed format rather than hiding variants
-    # with the same resolution. The Android muxer supports H.264 + AAC MP4.
     choices = []
     for f in combined:
         height = f.get("height") or 0
-        if height > 0 and str(f.get("vcodec") or "").startswith(("avc1", "h264")):
+        if height > 0:
             bitrate = round(f.get("tbr") or 0)
             choices.append({
                 "id": "single:" + str(f["format_id"]),
-                "label": f"{height}p · MP4 со звуком · {f['format_id']}" +
+                "label": f"{height}p · MP4 со звуком · русская дорожка · {f['format_id']}" +
                          (f" · {bitrate} кбит/с" if bitrate else ""),
                 "height": height, "kind": "single",
             })
@@ -64,19 +87,11 @@ def _available(info):
                 bitrate = round(f.get("tbr") or 0)
                 choices.append({
                     "id": "merge:" + str(f["format_id"]) + "+" + str(best_audio["format_id"]),
-                    "label": f"{height}p · MP4 + AAC · {f['format_id']}" +
+                    "label": f"{height}p · MP4 со звуком · русская дорожка · {f['format_id']}" +
                              (f" · {bitrate} кбит/с" if bitrate else ""),
                     "height": height, "kind": "merge",
                 })
     choices.sort(key=lambda item: (item["height"], item["kind"] == "single"), reverse=True)
-    for f in sorted(audio, key=lambda item: item.get("abr") or item.get("tbr") or 0, reverse=True):
-        bitrate = round(f.get("abr") or f.get("tbr") or 0)
-        choices.append({
-            "id": "audio:" + str(f["format_id"]),
-            "label": "M4A · " + str(f["format_id"]) +
-                     (f" · {bitrate} кбит/с" if bitrate else ""),
-            "height": -1, "kind": "audio",
-        })
     return choices
 
 class _DiagnosticLogger:
@@ -133,6 +148,7 @@ def inspect_video(url):
                 "ext": str(fmt.get("ext") or "?"),
                 "video": str(fmt.get("vcodec") or "none"),
                 "audio": str(fmt.get("acodec") or "none"),
+                "language": str(fmt.get("language") or ""),
                 "url": bool(fmt.get("url")),
             })
     diagnostics.sort(key=lambda item: item["height"], reverse=True)

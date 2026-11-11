@@ -281,6 +281,7 @@ class MainActivity : ComponentActivity() {
                                 append(item.optString("ext")).append(" · ")
                                 append(item.optString("video")).append(" / ")
                                 append(item.optString("audio"))
+                                if (item.optString("language").isNotBlank()) append(" · язык ").append(item.optString("language"))
                                 if (!item.optBoolean("url")) append(" · без URL")
                                 append("\n")
                             }
@@ -293,7 +294,7 @@ class MainActivity : ComponentActivity() {
                         selectedFormat = formatChoices.firstOrNull()?.first.orEmpty()
                         showFormatPicker = false
                         inspectStatus = if (formatChoices.isEmpty()) {
-                            "MP4 со звуком не найден. Для раздельных потоков потребуется объединение видео и аудио."
+                            "Не найдено видео с русской аудиодорожкой. Проверьте, что русская дорожка доступна на YouTube."
                         } else "Найдено форматов: " + formatChoices.size
                     } catch (e: Exception) {
                         inspectStatus = "Ошибка поиска: " + (e.localizedMessage ?: "Нет доступа к видео")
