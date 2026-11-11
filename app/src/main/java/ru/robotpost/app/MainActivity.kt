@@ -877,7 +877,6 @@ class MainActivity : ComponentActivity() {
                                                     Text(if (queueDetailsExpanded) "Скрыть список ▲" else "Показать список ▼")
                                                 }
                                             }
-                                            Text("Качество берётся из параметров приложения. Режим сохранения применяется к роликам, добавленным в очередь.", color = Muted, style = MaterialTheme.typography.bodySmall)
                                             HorizontalDivider(thickness = 1.dp, color = Separator)
                                             SaveModeDropdown(
                                                 selected = playlistSaveMode,
