@@ -37,39 +37,67 @@ def _has_original_marker(fmt):
     return any(marker in note for marker in ("original", "оригинал"))
 
 
+def _is_original_audio(fmt):
+    # YouTube may identify the original in the track note or in yt-dlp's
+    # internal language preference (10 = original, 5 = default, -10 = audio description).
+    if _has_original_marker(fmt):
+        return True
+    try:
+        return float(fmt.get("language_preference")) >= 10
+    except (TypeError, ValueError):
+        return False
+
+
 def _is_russian_original_audio(fmt):
-    # Language metadata can be copied from the video onto every dub. Require
-    # yt-dlp's track note itself to identify both Russian and the original.
     note = str(fmt.get("format_note") or "").lower()
     russian_note = any(marker in note for marker in ("russian", "русск", "[ru]", "(ru)"))
     explicit_other_language = any(marker in note for marker in (
         "english", "английск", "[en]", "(en)", " japanese", " french", " spanish",
     ))
-    return _has_original_marker(fmt) and russian_note and not explicit_other_language
+    return _is_original_audio(fmt) and russian_note and not explicit_other_language
 
 
-def _available(info):
+def _is_youtube_short(url, info):
+    parsed = urlparse(str(url))
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if not (host == "youtu.be" or host == "youtube.com" or host.endswith(".youtube.com")):
+        return False
+    if parsed.path.lower().startswith("/shorts/"):
+        return True
+    dimensions = [
+        (int(fmt.get("width") or 0), int(fmt.get("height") or 0))
+        for fmt in (info.get("formats") or [])
+        if fmt.get("vcodec") not in (None, "none")
+    ]
+    dimensions = [(width, height) for width, height in dimensions if width > 0 and height > 0]
+    if not dimensions:
+        return False
+    width, height = max(dimensions, key=lambda item: item[0] * item[1])
+    return height > width
+
+
+def _available(info, is_short=False):
     formats = [f for f in (info.get("formats") or []) if f.get("url")]
-    # Do not expose progressive/muxed formats: yt-dlp may bind them to a
-    # default dub. Build choices only from video-only MP4 + explicitly
-    # original Russian AAC audio streams, then mux those exact stream IDs.
+    # Avoid progressive/muxed streams, which can be tied to a dubbed audio track.
+    # Use the explicitly original track for Shorts and the Russian original elsewhere.
     video = [f for f in formats if f.get("ext") == "mp4"
              and str(f.get("vcodec") or "").startswith(("avc1", "h264"))
              and f.get("acodec") == "none"]
     audio = [f for f in formats if f.get("ext") in ("m4a", "mp4")
              and str(f.get("acodec") or "").startswith(("mp4a", "aac"))
              and f.get("vcodec") == "none"
-             and _is_russian_original_audio(f)]
+             and (_is_original_audio(f) if is_short else _is_russian_original_audio(f))]
     best_audio = max(audio, key=lambda f: f.get("abr") or f.get("tbr") or 0, default=None)
     choices = []
     if best_audio:
+        track_label = "оригинальная дорожка" if is_short else "русская оригинальная дорожка"
         for f in video:
             height = f.get("height") or 0
             if height > 0:
                 bitrate = round(f.get("tbr") or 0)
                 choices.append({
                     "id": "merge:" + str(f["format_id"]) + "+" + str(best_audio["format_id"]),
-                    "label": f"{height}p · MP4 со звуком · русская оригинальная дорожка · {f['format_id']}" +
+                    "label": f"{height}p · MP4 со звуком · {track_label} · {f['format_id']}" +
                              (f" · {bitrate} кбит/с" if bitrate else ""),
                     "height": height, "kind": "merge",
                 })
@@ -99,7 +127,7 @@ def _inspect_best(url):
             opts["logger"] = _DiagnosticLogger(warnings)
             with YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=False)
-            choices = _available(info)
+            choices = _available(info, is_short=_is_youtube_short(url, info))
             reports.append({"profile": profile, "formats": len(info.get("formats") or []),
                             "max_video": max((fmt.get("height") or 0 for fmt in info.get("formats") or []
                                           if fmt.get("vcodec") not in (None, "none")), default=0),
@@ -201,7 +229,7 @@ def download_video(url, directory, choice):
         raise ValueError("Неизвестный профиль загрузки")
     with YoutubeDL(_options(profile)) as ydl:
         info = ydl.extract_info(url, download=False)
-    valid = {item["id"] for item in _available(info)}
+    valid = {item["id"] for item in _available(info, is_short=_is_youtube_short(url, info))}
     if selection not in valid:
         raise ValueError("Формат изменился. Обнови список форматов.")
     kind, fmt = selection.split(":", 1)
