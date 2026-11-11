@@ -28,7 +28,7 @@ object DownloadHistory {
 
     fun downloadedSourceKeys(context: Context): Set<String> =
         list(context).mapNotNull { item ->
-            item.optString("source").takeIf { it.isNotBlank() }?.let(::sourceKey)
+            item.optString("source").takeIf { it.isNotBlank() }?.let { sourceKey(it) }
         }.toSet()
 
     fun add(context: Context, name: String, source: String, playlist: String = "") {
