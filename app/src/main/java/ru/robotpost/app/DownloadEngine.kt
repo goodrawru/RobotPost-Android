@@ -122,7 +122,7 @@ object DownloadEngine {
                 date, buildTxtDescription(info),
                 exportVideo?.let { Uri.fromFile(it) },
                 exportAudio?.let { Uri.fromFile(it) },
-                "audio.m4a",
+                audioFileName = null,
                 includeDescription && saveMode != "video" && saveMode != "audio",
                 videoOnly || saveMode == "video"
             )

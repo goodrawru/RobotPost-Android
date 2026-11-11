@@ -1,6 +1,8 @@
 package ru.robotpost.app
 
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.os.Bundle
 import android.content.Intent
 import android.net.Uri
@@ -1134,7 +1136,7 @@ class MainActivity : ComponentActivity() {
                                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                                                     listOf(
                                                         Triple("Видео", "video.mp4", "video/mp4"),
-                                                        Triple("Аудио", "audio.m4a", "audio/mp4"),
+                                                        Triple("Аудио", "__audio__", "audio/*"),
                                                         Triple("Описание", "description.txt", "text/plain")
                                                     ).forEach { (label, filename, mime) ->
                                                         TextButton(onClick = {
@@ -1142,11 +1144,29 @@ class MainActivity : ComponentActivity() {
                                                                 val root = prefs.getString("archiveRoot", "").orEmpty()
                                                                 require(root.isNotBlank()) { "Сначала выбери папку архива" }
                                                                 val files = ArchiveBrowser.files(this@MainActivity, Uri.parse(root), entry.optString("name"))
-                                                                val fileUri = files[filename]
-                                                                    ?: if (filename == "audio.m4a") files["audio.mp3"] else null
+                                                                val audioEntry = files.entries.firstOrNull { item ->
+                                                                    item.key.substringAfterLast('.', "").lowercase(Locale.ROOT) in
+                                                                        setOf("m4a", "mp3", "aac", "ogg", "opus", "webm", "wav", "flac")
+                                                                }
+                                                                val fileEntry = if (filename == "__audio__") audioEntry
+                                                                    else files.entries.firstOrNull { it.key == filename }
+                                                                val fileUri = fileEntry?.value
                                                                 require(fileUri != null) { "Файл не найден в выбранном архиве" }
+                                                                val actualMime = if (filename == "__audio__") when (
+                                                                    fileEntry!!.key.substringAfterLast('.', "").lowercase(Locale.ROOT)
+                                                                ) {
+                                                                    "m4a" -> "audio/mp4"
+                                                                    "mp3" -> "audio/mpeg"
+                                                                    "aac" -> "audio/aac"
+                                                                    "ogg" -> "audio/ogg"
+                                                                    "opus" -> "audio/opus"
+                                                                    "webm" -> "audio/webm"
+                                                                    "wav" -> "audio/wav"
+                                                                    "flac" -> "audio/flac"
+                                                                    else -> "audio/*"
+                                                                } else mime
                                                                 val intent = Intent(Intent.ACTION_VIEW).apply {
-                                                                    setDataAndType(fileUri, if (filename == "audio.m4a" && files["audio.m4a"] == null) "audio/mpeg" else mime)
+                                                                    setDataAndType(fileUri, actualMime)
                                                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                                                 }
                                                                 startActivity(intent)
@@ -1178,8 +1198,11 @@ class MainActivity : ComponentActivity() {
                                                         val root = prefs.getString("archiveRoot", "").orEmpty()
                                                         require(root.isNotBlank()) { "Сначала выбери папку архива" }
                                                         val files = ArchiveBrowser.files(this@MainActivity, Uri.parse(root), entry.optString("name"))
-                                                        val uris = listOf("video.mp4", "audio.m4a", "audio.mp3", "description.txt")
-                                                            .mapNotNull { files[it] }
+                                                        val audioUri = files.entries.firstOrNull { item ->
+                                                            item.key.substringAfterLast('.', "").lowercase(Locale.ROOT) in
+                                                                setOf("m4a", "mp3", "aac", "ogg", "opus", "webm", "wav", "flac")
+                                                        }?.value
+                                                        val uris = listOfNotNull(files["video.mp4"], audioUri, files["description.txt"])
                                                         require(uris.isNotEmpty()) { "Файлы комплекта не найдены" }
                                                         val share = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
                                                             type = "*/*"
@@ -1218,9 +1241,29 @@ class MainActivity : ComponentActivity() {
                                             title = { Text("Редактирование описания") },
                                             text = {
                                                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.SpaceBetween
+                                                    ) {
+                                                        Text("UTF-8 · ${editDescriptionText.length} символов",
+                                                            color = Muted, style = MaterialTheme.typography.bodySmall)
+                                                        TextButton(onClick = {
+                                                            val clipboard = getSystemService(ClipboardManager::class.java)
+                                                            if (clipboard == null) {
+                                                                editDescriptionError = "Буфер обмена недоступен"
+                                                            } else {
+                                                                clipboard.setPrimaryClip(
+                                                                    ClipData.newPlainText("description.txt", editDescriptionText)
+                                                                )
+                                                                android.widget.Toast.makeText(this@MainActivity,
+                                                                    "Текст скопирован", android.widget.Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        }) { Text("Копировать") }
+                                                    }
                                                     OutlinedTextField(
                                                         value = editDescriptionText,
-                                                        onValueChange = { editDescriptionText = it },
+                                                        onValueChange = { editDescriptionText = it; editDescriptionError = "" },
                                                         label = { Text("description.txt") },
                                                         modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp, max = 350.dp),
                                                         minLines = 6

@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.provider.OpenableColumns
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -46,6 +47,26 @@ object ArchiveExporter {
         return false
     }
 
+    private fun audioExtension(resolver: ContentResolver, source: Uri): String {
+        val displayName = runCatching {
+            resolver.query(source, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0).orEmpty() else ""
+            }.orEmpty()
+        }.getOrDefault("")
+        val name = displayName.ifBlank { source.lastPathSegment.orEmpty() }
+        val ext = name.substringAfterLast('.', "").substringBefore('?').lowercase(Locale.ROOT)
+        if (ext in setOf("m4a", "mp3", "aac", "ogg", "opus", "webm", "wav", "flac")) return ".$ext"
+        return when (resolver.getType(source)?.substringBefore(';')?.lowercase(Locale.ROOT)) {
+            "audio/mpeg", "audio/mp3" -> ".mp3"
+            "audio/aac" -> ".aac"
+            "audio/ogg" -> ".ogg"
+            "audio/opus" -> ".opus"
+            "audio/webm" -> ".webm"
+            "audio/wav", "audio/x-wav" -> ".wav"
+            "audio/flac" -> ".flac"
+            else -> ".m4a"
+        }
+    }
     private fun copy(resolver: ContentResolver, parent: Uri, name: String, mime: String, source: Uri): Uri {
         val target = DocumentsContract.createDocument(resolver, parent, mime, name)
             ?: error("Не удалось создать $name")
@@ -91,7 +112,7 @@ object ArchiveExporter {
         description: String,
         video: Uri?,
         audio: Uri?,
-        audioFileName: String = "audio.mp3",
+        audioFileName: String? = null,
         includeDescription: Boolean = true,
         videoOnly: Boolean = false
     ): String {
@@ -113,7 +134,23 @@ object ArchiveExporter {
             ?: error("Не удалось создать папку видео")
         try {
             if (video != null) copy(resolver, packageFolder, "video.mp4", "video/mp4", video)
-            if (audio != null && !videoOnly) copy(resolver, packageFolder, audioFileName, if (audioFileName.endsWith(".m4a")) "audio/mp4" else "audio/mpeg", audio)
+            if (audio != null && !videoOnly) {
+                val extension = audioExtension(resolver, audio)
+                val finalAudioName = audioFileName?.takeIf { it.isNotBlank() }
+                    ?: (safeName(channel, "audio") + extension)
+                val mime = when (extension) {
+                    ".mp3" -> "audio/mpeg"
+                    ".m4a" -> "audio/mp4"
+                    ".aac" -> "audio/aac"
+                    ".ogg" -> "audio/ogg"
+                    ".opus" -> "audio/opus"
+                    ".webm" -> "audio/webm"
+                    ".wav" -> "audio/wav"
+                    ".flac" -> "audio/flac"
+                    else -> resolver.getType(audio) ?: "application/octet-stream"
+                }
+                copy(resolver, packageFolder, finalAudioName, mime, audio)
+            }
             if (includeDescription && !videoOnly) {
             val txt = DocumentsContract.createDocument(resolver, packageFolder, "text/plain", "description.txt")
                 ?: error("Не удалось создать описание")
