@@ -472,17 +472,28 @@ class MainActivity : ComponentActivity() {
                                             onClick = {
                                                 val selectedUrls = availableChannelVideos.map { it.url }.distinct()
                                                     .filter { it in selectedChannelVideos }
-                                                val alreadyKnown = (pendingQueue + failedQueue).toSet()
-                                                val newUrls = selectedUrls.filterNot { it in alreadyKnown }
+                                                val downloadedKeys = DownloadHistory.downloadedSourceKeys(this@MainActivity)
+                                                val queuedKeys = (pendingQueue + failedQueue)
+                                                    .map { DownloadHistory.sourceKey(it) }.toSet()
+                                                val newUrls = selectedUrls.filterNot {
+                                                    val key = DownloadHistory.sourceKey(it)
+                                                    key in downloadedKeys || key in queuedKeys
+                                                }
+                                                val downloadedSkipped = selectedUrls.count {
+                                                    DownloadHistory.sourceKey(it) in downloadedKeys
+                                                }
+                                                val queuedSkipped = selectedUrls.size - newUrls.size - downloadedSkipped
                                                 val merged = (pendingQueue + newUrls).distinct()
                                                 val saved = prefs.edit()
                                                     .putString("pendingQueue", merged.joinToString("\n"))
                                                     .commit()
                                                 if (saved) {
                                                     pendingQueue = merged
-                                                    val skipped = selectedUrls.size - newUrls.size
-                                                    channelCheckStatus = "Добавлено в очередь: ${newUrls.size}" +
-                                                        if (skipped > 0) " · уже были в очереди/ошибках: $skipped" else ""
+                                                    channelCheckStatus = buildString {
+                                                        append("Добавлено в очередь: ").append(newUrls.size)
+                                                        if (downloadedSkipped > 0) append(" · уже скачано: ").append(downloadedSkipped)
+                                                        if (queuedSkipped > 0) append(" · уже в очереди/ошибках: ").append(queuedSkipped)
+                                                    }
                                                     selectedChannelVideos = emptySet()
                                                 } else {
                                                     channelCheckStatus = "Не удалось сохранить очередь. Повтори попытку."
