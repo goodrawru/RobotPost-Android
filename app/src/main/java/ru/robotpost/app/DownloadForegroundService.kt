@@ -105,9 +105,13 @@ class DownloadForegroundService : Service() {
                     val saveMode = job?.optString("mode")
                         ?: playlistMeta?.optString("mode")?.takeIf { it.isNotBlank() }
                         ?: prefs.getString("playlistSaveMode", "full").orEmpty()
-                    val quality = if (saveMode == "audio") "audio"
-                        else (playlistMeta?.optString("quality")?.takeIf { it.isNotBlank() }
-                            ?: prefs.getString("queueQuality", "720") ?: "720").let { if (it == "audio") "720" else it }
+                    val quality = playlistMeta?.optString("quality")?.takeIf { it.isNotBlank() }
+                        ?: when (prefs.getString("quality", "Лучшее доступное")) {
+                            "1080p" -> "1080"
+                            "720p" -> "720"
+                            "480p" -> "480"
+                            else -> "best"
+                        }
                     val root = job?.optString("root")?.takeIf { it.isNotBlank() }
                         ?: playlistMeta?.optString("root")?.takeIf { it.isNotBlank() }
                         ?: prefs.getString("archiveRoot", "").orEmpty()
@@ -117,16 +121,25 @@ class DownloadForegroundService : Service() {
                     val formats = info.optJSONArray("formats") ?: error("Нет форматов")
                     val candidates = (0 until formats.length()).map { formats.getJSONObject(it) }
                         .filter {
-                            if (quality == "audio") it.optString("kind") == "audio"
-                            else it.optString("kind") != "audio" && it.optInt("height", 0) > 0
+                            it.optString("kind") != "audio" && it.optInt("height", 0) > 0
                         }
-                    val selected = if (job != null) null else if (quality == "audio") candidates.firstOrNull()
-                        else candidates.filter { it.optInt("height", 0) <= quality.toInt() }
-                            .maxWithOrNull(compareBy<JSONObject> { it.optInt("height", 0) }
-                                .thenBy { if (it.optString("kind") == "single") 1 else 0 })
-                            
+                    val selected = if (job != null) null else if (quality == "best") candidates.maxWithOrNull(
+                            compareBy<JSONObject> { it.optInt("height", 0) }
+                                .thenBy { if (it.optString("kind") == "single") 1 else 0 }
+                        )
+                        else {
+                            val cap = quality.toInt()
+                            val withinCap = candidates.filter { it.optInt("height", 0) <= cap }
+                            (withinCap.ifEmpty {
+                                candidates.minByOrNull { it.optInt("height", Int.MAX_VALUE) }?.let(::listOf) ?: emptyList()
+                            }).maxWithOrNull(
+                                compareBy<JSONObject> { it.optInt("height", 0) }
+                                    .thenBy { if (it.optString("kind") == "single") 1 else 0 }
+                            )
+                        }
+
                     require(job != null || selected != null) { "Нет доступных совместимых форматов" }
-                    if (job == null && quality != "audio" && selected!!.optInt("height", 0) != quality.toInt())
+                    if (job == null && quality != "best" && selected!!.optInt("height", 0) != quality.toInt())
                         status("Доступно ${selected!!.optInt("height", 0)}p вместо ${quality}p")
                     val itemTitle = info.optString("title", url)
                     prefs.edit().putString("queueItemTitle", itemTitle).putInt("queueItemPercent", 0).apply()

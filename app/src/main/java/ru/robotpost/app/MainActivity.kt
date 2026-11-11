@@ -159,6 +159,10 @@ class MainActivity : ComponentActivity() {
                 var queueRunning by remember { mutableStateOf(false) }
                 var queueStopRequested by remember { mutableStateOf(false) }
                 var queueSelected by remember { mutableStateOf(setOf<String>()) }
+                var channelLatestVideos by remember { mutableStateOf(emptyMap<String, List<LatestVideo>>()) }
+                var selectedChannelVideos by remember { mutableStateOf(setOf<String>()) }
+                var channelsChecking by remember { mutableStateOf(false) }
+                var channelCheckStatus by remember { mutableStateOf("") }
                 var failedQueue by remember { mutableStateOf(prefs.getString("failedQueue", "")!!.lines().filter { it.isNotBlank() }) }
                 var failureReasons by remember { mutableStateOf(
                     runCatching {
@@ -177,7 +181,6 @@ class MainActivity : ComponentActivity() {
                 var playlistSelected by remember { mutableStateOf(setOf<String>()) }
                 var playlistPreviewTitle by remember { mutableStateOf("") }
                 var showPlaylistPreview by remember { mutableStateOf(false) }
-                var queueQuality by remember { mutableStateOf(prefs.getString("queueQuality", "720") ?: "720") }
                 var includeDescription by remember { mutableStateOf(prefs.getBoolean("includeDescription", true)) }
                 var singleSaveMode by remember { mutableStateOf(prefs.getString("singleSaveMode", "full") ?: "full") }
                 var playlistSaveMode by remember { mutableStateOf(prefs.getString("playlistSaveMode", if (prefs.getBoolean("playlistVideoOnly", false)) "video" else "full") ?: "full") }
@@ -387,12 +390,11 @@ class MainActivity : ComponentActivity() {
                                 item { SectionTitle("Быстрые действия") }
                                 item { ActionTile("▣", "Мои каналы", "Добавить или удалить источник") { page = 1 } }
                                 item { ActionTile("✎", "Очистка описания", "Удалить рекламные строки из текста") { page = 3 } }
-                                item { ActionTile("⚙", "Параметры", "Качество и будущие фоновые проверки") { page = 4 } }
+                                item { ActionTile("⚙", "Параметры", "Качество и проверка каналов") { page = 4 } }
                             }
                             1 -> {
                                 var input by remember { mutableStateOf("") }
                                 var error by remember { mutableStateOf("") }
-                                var channelSearch by remember { mutableStateOf("") }
                                 var channelToDelete by remember { mutableStateOf<String?>(null) }
                                 Column(Modifier.fillMaxSize().padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Text("Источники видео", color = Muted)
@@ -419,13 +421,75 @@ class MainActivity : ComponentActivity() {
                                         }
                                     ) { Text("Добавить канал") }
                                     Text("Сохранено: ${channels.size}", color = Muted)
-                                    OutlinedTextField(
-                                        value = channelSearch,
-                                        onValueChange = { channelSearch = it },
-                                        label = { Text("Поиск канала") },
-                                        singleLine = true,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
+                                    Button(
+                                        enabled = channels.isNotEmpty() && !channelsChecking,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        onClick = {
+                                            channelsChecking = true
+                                            channelCheckStatus = "Проверяю сохранённые каналы..."
+                                            selectedChannelVideos = emptySet()
+                                            downloadScope.launch {
+                                                val found = linkedMapOf<String, List<LatestVideo>>()
+                                                val errors = mutableListOf<String>()
+                                                for (channel in channels) {
+                                                    try {
+                                                        found[channel] = withContext(Dispatchers.IO) {
+                                                            DownloadEngine.latest(this@MainActivity, channel)
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        errors += channel.substringAfterLast("/") + ": " +
+                                                            (e.localizedMessage ?: "ошибка проверки")
+                                                    }
+                                                }
+                                                channelLatestVideos = found
+                                                channelsChecking = false
+                                                val total = found.values.sumOf { it.size }
+                                                channelCheckStatus = "Проверено каналов: ${found.size} из ${channels.size} · видео: $total" +
+                                                    if (errors.isEmpty()) "" else " · ошибок: ${errors.size}"
+                                                if (errors.isNotEmpty()) {
+                                                    channelCheckStatus += "\n" + errors.take(3).joinToString("\n")
+                                                }
+                                            }
+                                        }
+                                    ) { Text(if (channelsChecking) "Проверяю каналы..." else "↻  Проверить каналы") }
+                                    if (channelCheckStatus.isNotBlank()) Text(channelCheckStatus, color = if (channelCheckStatus.contains("ошибок:")) Color(0xFFFFC48A) else Muted)
+                                    val availableChannelVideos = channels.flatMap { channelLatestVideos[it].orEmpty() }
+                                    if (availableChannelVideos.isNotEmpty()) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Выбрано: ${selectedChannelVideos.size} из ${availableChannelVideos.size}", modifier = Modifier.weight(1f), color = Muted)
+                                            TextButton(
+                                                enabled = !channelsChecking,
+                                                onClick = { selectedChannelVideos = availableChannelVideos.map { it.url }.toSet() }
+                                            ) { Text("Все") }
+                                            TextButton(
+                                                enabled = selectedChannelVideos.isNotEmpty(),
+                                                onClick = { selectedChannelVideos = emptySet() }
+                                            ) { Text("Сбросить") }
+                                        }
+                                        Button(
+                                            enabled = selectedChannelVideos.isNotEmpty() && !channelsChecking,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            onClick = {
+                                                val selectedUrls = availableChannelVideos.map { it.url }.distinct()
+                                                    .filter { it in selectedChannelVideos }
+                                                val alreadyKnown = (pendingQueue + failedQueue).toSet()
+                                                val newUrls = selectedUrls.filterNot { it in alreadyKnown }
+                                                val merged = (pendingQueue + newUrls).distinct()
+                                                val saved = prefs.edit()
+                                                    .putString("pendingQueue", merged.joinToString("\n"))
+                                                    .commit()
+                                                if (saved) {
+                                                    pendingQueue = merged
+                                                    val skipped = selectedUrls.size - newUrls.size
+                                                    channelCheckStatus = "Добавлено в очередь: ${newUrls.size}" +
+                                                        if (skipped > 0) " · уже были в очереди/ошибках: $skipped" else ""
+                                                    selectedChannelVideos = emptySet()
+                                                } else {
+                                                    channelCheckStatus = "Не удалось сохранить очередь. Повтори попытку."
+                                                }
+                                            }
+                                        ) { Text("Добавить выбранные в очередь (${selectedChannelVideos.size})") }
+                                    }
                                     if (channelToDelete != null) {
                                         AlertDialog(
                                             onDismissRequest = { channelToDelete = null },
@@ -442,10 +506,10 @@ class MainActivity : ComponentActivity() {
                                         )
                                     }
                                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        items(channels.filter { it.contains(channelSearch.trim(), ignoreCase = true) }) { channel ->
+                                        items(channels) { channel ->
                                             var expanded by remember(channel) { mutableStateOf(false) }
                                             var loadingVideos by remember(channel) { mutableStateOf(false) }
-                                            var videos by remember(channel) { mutableStateOf(listOf<LatestVideo>()) }
+                                            val videos = channelLatestVideos[channel].orEmpty()
                                             var videoError by remember(channel) { mutableStateOf("") }
                                             val channelScope = rememberCoroutineScope()
                                             Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
@@ -471,15 +535,16 @@ class MainActivity : ComponentActivity() {
                                                         modifier = Modifier.fillMaxWidth(),
                                                         onClick = {
                                                             expanded = !expanded
-                                                            if (expanded && videos.isEmpty() && !loadingVideos) {
+                                                            if (expanded && channel !in channelLatestVideos && !loadingVideos && !channelsChecking) {
                                                                 loadingVideos = true
                                                                 videoError = ""
                                                                 channelScope.launch {
                                                                     try {
-                                                                        videos = withContext(Dispatchers.IO) {
+                                                                        val latest = withContext(Dispatchers.IO) {
                                                                             DownloadEngine.latest(this@MainActivity, channel)
                                                                         }
-                                                                        if (videos.isEmpty()) videoError = "Новые видео не найдены"
+                                                                        channelLatestVideos = channelLatestVideos + (channel to latest)
+                                                                        if (latest.isEmpty()) videoError = "Новые видео не найдены"
                                                                     } catch (e: Exception) {
                                                                         videoError = e.localizedMessage ?: "Не удалось загрузить список"
                                                                     } finally { loadingVideos = false }
@@ -505,36 +570,34 @@ class MainActivity : ComponentActivity() {
                                                             HorizontalDivider(color = Muted.copy(alpha = 0.2f))
                                                             Row(
                                                                 modifier = Modifier.fillMaxWidth(),
-                                                                verticalAlignment = Alignment.Top,
+                                                                verticalAlignment = Alignment.CenterVertically,
                                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                                                             ) {
-                                                                Text(
-                                                                    video.title,
-                                                                    modifier = Modifier.weight(1f),
-                                                                    fontWeight = FontWeight.Medium,
-                                                                    maxLines = 3,
-                                                                    overflow = TextOverflow.Ellipsis
+                                                                Checkbox(
+                                                                    checked = video.url in selectedChannelVideos,
+                                                                    onCheckedChange = { checked ->
+                                                                        selectedChannelVideos = if (checked) selectedChannelVideos + video.url
+                                                                            else selectedChannelVideos - video.url
+                                                                    },
+                                                                    enabled = !channelsChecking
                                                                 )
-                                                                Text(
-                                                                    video.publishedAt.ifBlank { "—" },
-                                                                    color = Muted,
-                                                                    style = MaterialTheme.typography.labelSmall,
-                                                                    maxLines = 1
-                                                                )
+                                                                Column(Modifier.weight(1f)) {
+                                                                    Text(video.title, fontWeight = FontWeight.Medium,
+                                                                        maxLines = 3, overflow = TextOverflow.Ellipsis)
+                                                                    Text(video.publishedAt.ifBlank { "Дата не указана" },
+                                                                        color = Muted, style = MaterialTheme.typography.labelSmall)
+                                                                }
                                                             }
-                                                            Button(onClick = {
-                                                                linkInput = video.url
-                                                                page = 2
-                                                            }, modifier = Modifier.fillMaxWidth()) { Text("Выбрать для скачивания") }
                                                         }
                                                         if (!loadingVideos) TextButton(onClick = {
                                                             loadingVideos = true
                                                             videoError = ""
                                                             channelScope.launch {
                                                                 try {
-                                                                    videos = withContext(Dispatchers.IO) {
+                                                                    val latest = withContext(Dispatchers.IO) {
                                                                         DownloadEngine.latest(this@MainActivity, channel)
                                                                     }
+                                                                    channelLatestVideos = channelLatestVideos + (channel to latest)
                                                                 } catch (e: Exception) {
                                                                     videoError = e.localizedMessage ?: "Не удалось обновить"
                                                                 } finally { loadingVideos = false }
@@ -767,7 +830,12 @@ class MainActivity : ComponentActivity() {
                                                                         .put("title", playlistPreviewTitle)
                                                                         .put("index", index + 1)
                                                                         .put("mode", playlistSaveMode)
-                                                                        .put("quality", queueQuality)
+                                                                        .put("quality", when (quality) {
+                                                    "1080p" -> "1080"
+                                                    "720p" -> "720"
+                                                    "480p" -> "480"
+                                                    else -> "best"
+                                                })
                                                                         .put("root", chosenRoot))
                                                                 }
                                                             }
@@ -798,32 +866,20 @@ class MainActivity : ComponentActivity() {
                                                     Text(if (queueDetailsExpanded) "Скрыть список ▲" else "Показать список ▼")
                                                 }
                                             }
-                                            Text("Настройки очереди применяются к добавляемым роликам. Ошибки можно просмотреть ниже.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                            Text("Качество берётся из параметров приложения. Режим сохранения применяется к роликам, добавленным в очередь.", color = Muted, style = MaterialTheme.typography.bodySmall)
                                             HorizontalDivider(thickness = 1.dp, color = Separator)
                                             SaveModeDropdown(
                                                 selected = playlistSaveMode,
                                                 onSelect = { mode ->
                                                     playlistSaveMode = mode
                                                     playlistVideoOnly = mode == "video"
-                                                    if (mode != "audio" && queueQuality == "audio") queueQuality = "720"
-                                                    if (mode == "audio") queueQuality = "audio"
                                                     prefs.edit().putString("playlistSaveMode", mode)
-                                                        .putBoolean("playlistVideoOnly", playlistVideoOnly)
-                                                        .putString("queueQuality", queueQuality).apply()
+                                                        .putBoolean("playlistVideoOnly", playlistVideoOnly).apply()
                                                 }
                                             )
                                             if (playlistVideoOnly) Text(
                                                 "Видео плейлиста сохраняются в общей папке с его названием.",
                                                 color = Muted, style = MaterialTheme.typography.bodySmall
-                                            )
-                                            QueueQualityDropdown(
-                                                selected = queueQuality,
-                                                audioOnly = playlistSaveMode == "audio",
-                                                onSelect = { quality ->
-                                                    queueQuality = quality
-                                                    prefs.edit().putString("queueQuality", quality).apply()
-                                                },
-                                                enabled = !queueRunning
                                             )
                                             if (chosenRoot.isBlank()) {
                                                 Text("Для скачивания очереди сначала выбери папку архива.", color = Color(0xFFFFC48A))
@@ -1344,13 +1400,9 @@ class MainActivity : ComponentActivity() {
                                 item {
                                     Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                         Column(Modifier.padding(16.dp)) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Column(Modifier.weight(1f)) {
-                                                    Text("Автопроверка каналов", fontWeight = FontWeight.SemiBold)
-                                                    Text("Будет доступна после подключения загрузчика", color = Muted, style = MaterialTheme.typography.bodySmall)
-                                                }
-                                                Switch(checked = false, onCheckedChange = null)
-                                            }
+                                            Text("Проверка каналов", fontWeight = FontWeight.SemiBold)
+                                            Text("Запусти проверку вручную во вкладке «Каналы». Автопроверка по расписанию пока не включена.",
+                                                color = Muted, style = MaterialTheme.typography.bodySmall)
                                         }
                                     }
                                 }
@@ -1381,35 +1433,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable
-private fun QueueQualityDropdown(
-    selected: String,
-    audioOnly: Boolean,
-    enabled: Boolean,
-    onSelect: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val qualities = if (audioOnly) listOf("audio") else listOf("720", "480", "360")
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Качество очереди", color = Accent, fontWeight = FontWeight.SemiBold)
-        Box {
-            OutlinedButton(onClick = { expanded = true }, enabled = enabled,
-                modifier = Modifier.fillMaxWidth()) {
-                Text(if (selected == "audio") "Аудио · M4A" else "Видео · ${selected}p",
-                    modifier = Modifier.weight(1f))
-                Text(" ▾")
-            }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                qualities.forEach { quality ->
-                    DropdownMenuItem(
-                        text = { Text(if (quality == "audio") "Аудио · M4A" else "Видео · ${quality}p") },
-                        onClick = { onSelect(quality); expanded = false }
-                    )
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun SaveModeDropdown(
