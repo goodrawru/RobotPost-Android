@@ -277,11 +277,13 @@ class MainActivity : ComponentActivity() {
                             if (data != null) for (i in 0 until data.length()) {
                                 val item = data.getJSONObject(i)
                                 append(item.optString("id")).append(" · ")
-                                append(item.optInt("height")).append("p · ")
+                                val formatHeight = item.optInt("height")
+                                if (formatHeight > 0) append(formatHeight).append("p · ") else append("аудио · ")
                                 append(item.optString("ext")).append(" · ")
                                 append(item.optString("video")).append(" / ")
                                 append(item.optString("audio"))
                                 if (item.optString("language").isNotBlank()) append(" · язык ").append(item.optString("language"))
+                                if (item.optString("note").isNotBlank()) append(" · ").append(item.optString("note"))
                                 if (!item.optBoolean("url")) append(" · без URL")
                                 append("\n")
                             }
@@ -294,7 +296,7 @@ class MainActivity : ComponentActivity() {
                         selectedFormat = formatChoices.firstOrNull()?.first.orEmpty()
                         showFormatPicker = false
                         inspectStatus = if (formatChoices.isEmpty()) {
-                            "Не найдено видео с русской аудиодорожкой. Проверьте, что русская дорожка доступна на YouTube."
+                            "Не найдена русская оригинальная дорожка. Альтернативный дубляж не будет выбран."
                         } else "Найдено форматов: " + formatChoices.size
                     } catch (e: Exception) {
                         inspectStatus = "Ошибка поиска: " + (e.localizedMessage ?: "Нет доступа к видео")

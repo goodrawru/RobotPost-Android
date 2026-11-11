@@ -32,54 +32,36 @@ def _options(profile="legacy"):
         opts["extractor_args"]["youtube"]["player_client"] = clients[profile]
     return opts
 
-def _is_russian_audio(fmt, fallback_language=None):
-    # yt-dlp exposes the audio language per stream when the source provides it.
-    # Never silently substitute an English/unknown-language stream.
-    for value in (fmt.get("language"), fmt.get("audio_language"),
-                  fmt.get("audio_track_language"), fmt.get("format_note"),
-                  fallback_language):
-        if not value:
-            continue
-        language = str(value).strip().lower().replace("_", "-")
-        if language in ("ru", "russian", "русский") or language.startswith(("ru-", "russian-", "русский-")):
-            return True
-        # Some extractors include a language tag in a short format note.
-        if language.startswith("[ru]") or language.startswith("(ru)") or language.startswith("ru "):
-            return True
-    return False
+def _has_original_marker(fmt):
+    note = str(fmt.get("format_note") or "").lower()
+    return any(marker in note for marker in ("original", "оригинал"))
+
+
+def _is_russian_original_audio(fmt):
+    # Language metadata can be copied from the video onto every dub. Require
+    # yt-dlp's track note itself to identify both Russian and the original.
+    note = str(fmt.get("format_note") or "").lower()
+    russian_note = any(marker in note for marker in ("russian", "русск", "[ru]", "(ru)"))
+    explicit_other_language = any(marker in note for marker in (
+        "english", "английск", "[en]", "(en)", " japanese", " french", " spanish",
+    ))
+    return _has_original_marker(fmt) and russian_note and not explicit_other_language
 
 
 def _available(info):
     formats = [f for f in (info.get("formats") or []) if f.get("url")]
-    source_language = info.get("language")
-    # Only present video choices that already contain Russian audio, or can be
-    # muxed with a Russian AAC stream. Silent video streams are never shown as
-    # standalone choices.
-    combined = [f for f in formats if f.get("ext") == "mp4"
-                and f.get("vcodec") not in (None, "none")
-                and f.get("acodec") not in (None, "none")
-                and str(f.get("vcodec") or "").startswith(("avc1", "h264"))
-                and str(f.get("acodec") or "").startswith(("mp4a", "aac"))
-                and _is_russian_audio(f, source_language)]
+    # Do not expose progressive/muxed formats: yt-dlp may bind them to a
+    # default dub. Build choices only from video-only MP4 + explicitly
+    # original Russian AAC audio streams, then mux those exact stream IDs.
     video = [f for f in formats if f.get("ext") == "mp4"
              and str(f.get("vcodec") or "").startswith(("avc1", "h264"))
              and f.get("acodec") == "none"]
     audio = [f for f in formats if f.get("ext") in ("m4a", "mp4")
              and str(f.get("acodec") or "").startswith(("mp4a", "aac"))
              and f.get("vcodec") == "none"
-             and _is_russian_audio(f, source_language)]
+             and _is_russian_original_audio(f)]
     best_audio = max(audio, key=lambda f: f.get("abr") or f.get("tbr") or 0, default=None)
     choices = []
-    for f in combined:
-        height = f.get("height") or 0
-        if height > 0:
-            bitrate = round(f.get("tbr") or 0)
-            choices.append({
-                "id": "single:" + str(f["format_id"]),
-                "label": f"{height}p · MP4 со звуком · русская дорожка · {f['format_id']}" +
-                         (f" · {bitrate} кбит/с" if bitrate else ""),
-                "height": height, "kind": "single",
-            })
     if best_audio:
         for f in video:
             height = f.get("height") or 0
@@ -87,11 +69,11 @@ def _available(info):
                 bitrate = round(f.get("tbr") or 0)
                 choices.append({
                     "id": "merge:" + str(f["format_id"]) + "+" + str(best_audio["format_id"]),
-                    "label": f"{height}p · MP4 со звуком · русская дорожка · {f['format_id']}" +
+                    "label": f"{height}p · MP4 со звуком · русская оригинальная дорожка · {f['format_id']}" +
                              (f" · {bitrate} кбит/с" if bitrate else ""),
                     "height": height, "kind": "merge",
                 })
-    choices.sort(key=lambda item: (item["height"], item["kind"] == "single"), reverse=True)
+    choices.sort(key=lambda item: item["height"], reverse=True)
     return choices
 
 class _DiagnosticLogger:
@@ -141,7 +123,7 @@ def inspect_video(url):
     diagnostics = []
     for fmt in raw_formats:
         height = fmt.get("height") or 0
-        if height:
+        if height or fmt.get("acodec") not in (None, "none"):
             diagnostics.append({
                 "id": str(fmt.get("format_id") or "?"),
                 "height": height,
@@ -149,6 +131,7 @@ def inspect_video(url):
                 "video": str(fmt.get("vcodec") or "none"),
                 "audio": str(fmt.get("acodec") or "none"),
                 "language": str(fmt.get("language") or ""),
+                "note": str(fmt.get("format_note") or ""),
                 "url": bool(fmt.get("url")),
             })
     diagnostics.sort(key=lambda item: item["height"], reverse=True)
