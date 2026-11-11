@@ -440,7 +440,7 @@ class MainActivity : ComponentActivity() {
                                         items(channels.filter { it.contains(channelSearch.trim(), ignoreCase = true) }) { channel ->
                                             var expanded by remember(channel) { mutableStateOf(false) }
                                             var loadingVideos by remember(channel) { mutableStateOf(false) }
-                                            var videos by remember(channel) { mutableStateOf(listOf<DownloadEngine.LatestVideo>()) }
+                                            var videos by remember(channel) { mutableStateOf(listOf<LatestVideo>()) }
                                             var videoError by remember(channel) { mutableStateOf("") }
                                             val channelScope = rememberCoroutineScope()
                                             Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
