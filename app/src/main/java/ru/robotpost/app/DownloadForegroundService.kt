@@ -55,7 +55,7 @@ class DownloadForegroundService : Service() {
             Intent(this, DownloadForegroundService::class.java).setAction(ACTION_STOP),
             pendingFlags
         )
-        val percent = Regex("""(\\d{1,3})%""")
+        val percent = Regex("""(\d{1,3})%""")
             .find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 100)
         val active = percent != null || message.startsWith("Проверяю:") ||
             message.startsWith("Скачиваю:") || message.startsWith("Объединяю") ||
