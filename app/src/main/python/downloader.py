@@ -60,22 +60,19 @@ def _is_original_audio(fmt):
         return False
 
 
-def _is_russian_original_audio(fmt):
+def _audio_language(fmt):
+    return str(fmt.get("language") or fmt.get("language_code") or "").strip().lower()
+
+
+def _is_russian_audio(fmt):
+    language = _audio_language(fmt)
     note = str(fmt.get("format_note") or "").lower()
-    language = str(fmt.get("language") or fmt.get("language_code") or "").strip().lower()
-    russian_language = (
+    language_match = (
         language == "ru" or language.startswith(("ru-", "ru_", "rus-"))
         or language in ("rus", "russian", "русский")
     )
-    russian_note = any(marker in note for marker in ("russian", "русск", "[ru]", "(ru)"))
-    other_language = (
-        language.startswith(("en", "ja", "fr", "es", "de", "it", "zh", "ko"))
-        or language in ("english", "japanese", "french", "spanish", "german", "italian")
-        or any(marker in note for marker in (
-            "english", "английск", "[en]", "(en)", "japanese", "french", "spanish",
-        ))
-    )
-    return _is_original_audio(fmt) and (russian_language or russian_note) and not other_language
+    note_match = any(marker in note for marker in ("russian", "русск", "[ru]", "(ru)"))
+    return language_match or (note_match and not any(marker in note for marker in ("english", "английск", "[en]", "(en)")))
 
 
 def _is_youtube_short(url, info):
@@ -99,19 +96,24 @@ def _is_youtube_short(url, info):
 
 def _available(info, is_short=False):
     formats = [f for f in (info.get("formats") or []) if f.get("url")]
-    # Avoid progressive/muxed streams, which can be tied to a dubbed audio track.
-    # Use the explicitly original track for Shorts and the Russian original elsewhere.
+    # Use the original audio for Shorts. For regular videos prefer an available
+    # Russian track (original or dubbed), with the original track as fallback.
     video = [f for f in formats if f.get("ext") == "mp4"
              and str(f.get("vcodec") or "").startswith(("avc1", "h264"))
              and f.get("acodec") == "none"]
     audio = [f for f in formats if f.get("ext") in ("m4a", "mp4")
              and str(f.get("acodec") or "").startswith(("mp4a", "aac"))
              and f.get("vcodec") == "none"
-             and (_is_original_audio(f) if is_short else _is_russian_original_audio(f))]
+             and (_is_original_audio(f) if is_short else _is_russian_audio(f))]
+    if not audio and not is_short:
+        audio = [f for f in formats if f.get("ext") in ("m4a", "mp4")
+                 and str(f.get("acodec") or "").startswith(("mp4a", "aac"))
+                 and f.get("vcodec") == "none" and _is_original_audio(f)]
     best_audio = max(audio, key=lambda f: f.get("abr") or f.get("tbr") or 0, default=None)
     choices = []
     if best_audio:
-        track_label = "оригинальная дорожка" if is_short else "русская оригинальная дорожка"
+        track_label = ("оригинальная дорожка" if is_short else
+                       ("русская озвучка" if _is_russian_audio(best_audio) else "исходная дорожка"))
         for f in video:
             height = f.get("height") or 0
             if height > 0:
@@ -121,6 +123,8 @@ def _available(info, is_short=False):
                     "label": f"{height}p · MP4 со звуком · {track_label} · {f['format_id']}" +
                              (f" · {bitrate} кбит/с" if bitrate else ""),
                     "height": height, "kind": "merge",
+                    "russianAudio": _is_russian_audio(best_audio),
+                    "originalAudio": _is_original_audio(best_audio),
                 })
     choices.sort(key=lambda item: item["height"], reverse=True)
     return choices
@@ -139,6 +143,7 @@ class _DiagnosticLogger:
 
 def _inspect_best(url, cookie_file=None, use_cookies=False, js_runtime_path=None):
     best_info, best_choices, best_profile = None, [], "legacy"
+    best_score = (-1, -1, -1)
     failures = []
     reports = []
     for profile in ("auto", "legacy", "alternate", "tv"):
@@ -152,17 +157,24 @@ def _inspect_best(url, cookie_file=None, use_cookies=False, js_runtime_path=None
             opts["logger"] = _DiagnosticLogger(warnings)
             with YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=False)
-            choices = _available(info, is_short=_is_youtube_short(url, info))
+            is_short = _is_youtube_short(url, info)
+            choices = _available(info, is_short=is_short)
+            max_height = max((item["height"] for item in choices), default=0)
+            preferred_key = "originalAudio" if is_short else "russianAudio"
+            has_preferred_audio = any(item.get(preferred_key) for item in choices)
             reports.append({"profile": profile, "formats": len(info.get("formats") or []),
                             "max_video": max((fmt.get("height") or 0 for fmt in info.get("formats") or []
                                           if fmt.get("vcodec") not in (None, "none")), default=0),
+                            "russian_audio": any(item.get("russianAudio") for item in choices),
                             "warnings": warnings[:8]})
-            if best_info is None or max((x["height"] for x in choices), default=0) > max((x["height"] for x in best_choices), default=0):
+            score = (int(has_preferred_audio), max_height, len(choices))
+            if best_info is None or score > best_score:
                 best_info, best_choices, best_profile = info, choices, profile
-            # Most ordinary YouTube videos expose a useful stream on the
-            # first client. Stop probing fallback clients once a sound-capable
-            # 720p option with the original Russian track is available.
-            if max((x["height"] for x in best_choices), default=0) >= 720:
+                best_score = score
+            # Keep looking across YouTube clients until a Russian track is found;
+            # Shorts retain their original track. Fall back to original audio if
+            # none of the clients provides Russian audio.
+            if max_height >= 720 and has_preferred_audio:
                 break
         except Exception as exc:
             failures.append(str(exc)[:180])
