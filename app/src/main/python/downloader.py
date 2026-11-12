@@ -19,6 +19,7 @@ def _options(profile="legacy", cookie_file=None, use_cookies=False, js_runtime_p
     opts = {
         "noplaylist": True, "quiet": True, "no_warnings": False,
         "retries": 4, "fragment_retries": 4, "socket_timeout": 35,
+        "http_headers": {"Accept-Language": "ru-RU,ru;q=0.9,en;q=0.5"},
     }
     # The extractor's own defaults are deliberately tried first on newer
     # yt-dlp versions. Forced clients can hide adaptive streams.
