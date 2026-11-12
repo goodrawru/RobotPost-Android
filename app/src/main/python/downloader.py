@@ -15,7 +15,7 @@ def _check_url(url):
         raise ValueError("Нужна ссылка https://youtube.com или https://youtu.be")
     return url
 
-def _options(profile="legacy", cookie_file=None):
+def _options(profile="legacy", cookie_file=None, use_cookies=False):
     opts = {
         "noplaylist": True, "quiet": True, "no_warnings": False,
         "retries": 4, "fragment_retries": 4, "socket_timeout": 35,
@@ -31,9 +31,15 @@ def _options(profile="legacy", cookie_file=None):
     opts["extractor_args"] = {"youtube": {"lang": ["ru"]}}
     if profile in clients:
         opts["extractor_args"]["youtube"]["player_client"] = clients[profile]
-    if cookie_file and os.path.isfile(cookie_file):
+    if use_cookies and cookie_file and os.path.isfile(cookie_file):
         opts["cookiefile"] = cookie_file
     return opts
+
+
+def _needs_login(error):
+    message = str(error).lower()
+    return ("sign in to confirm" in message or "login required" in message
+            or "войдите в аккаунт" in message)
 
 def _has_original_marker(fmt):
     note = str(fmt.get("format_note") or "").lower()
@@ -128,14 +134,14 @@ class _DiagnosticLogger:
         self.warning(message)
 
 
-def _inspect_best(url, cookie_file=None):
+def _inspect_best(url, cookie_file=None, use_cookies=False):
     best_info, best_choices, best_profile = None, [], "legacy"
     failures = []
     reports = []
     for profile in ("auto", "legacy", "alternate", "tv"):
         try:
             warnings = []
-            opts = _options(profile, cookie_file)
+            opts = _options(profile, cookie_file, use_cookies)
             # Format discovery is metadata-only; short retries keep a slow
             # client profile from stalling the screen. Downloads keep their
             # normal retry policy.
@@ -163,7 +169,14 @@ def _inspect_best(url, cookie_file=None):
     return best_info, best_choices, best_profile, reports
 
 def inspect_video(url, cookie_file=None):
-    info, choices, profile, reports = _inspect_best(_check_url(url), cookie_file)
+    checked_url = _check_url(url)
+    try:
+        info, choices, profile, reports = _inspect_best(checked_url)
+    except Exception as exc:
+        if not cookie_file or not _needs_login(exc):
+            raise
+        # Use the account session only when YouTube explicitly asks for sign-in.
+        info, choices, profile, reports = _inspect_best(checked_url, cookie_file, True)
     for choice in choices:
         choice["id"] = profile + "|" + choice["id"]
     raw_formats = info.get("formats") or []
@@ -226,14 +239,22 @@ def _progress_hook(directory, stage):
     return hook
 
 
-def _fetch(url, directory, fmt_id, prefix, profile="legacy", cookie_file=None):
-    opts = _options(profile, cookie_file)
-    opts["progress_hooks"] = [_progress_hook(directory, prefix)]
-    opts.update({"format": fmt_id, "outtmpl": os.path.join(directory, prefix + ".%(ext)s"),
-                 "overwrites": True, "restrictfilenames": True})
-    with YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        return info, _get_file(info, ydl)
+def _fetch(url, directory, fmt_id, prefix, profile="legacy", cookie_file=None, use_cookies=False):
+    def run(with_cookies):
+        opts = _options(profile, cookie_file, with_cookies)
+        opts["progress_hooks"] = [_progress_hook(directory, prefix)]
+        opts.update({"format": fmt_id, "outtmpl": os.path.join(directory, prefix + ".%(ext)s"),
+                     "overwrites": True, "restrictfilenames": True})
+        with YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            return info, _get_file(info, ydl)
+
+    try:
+        return run(use_cookies)
+    except Exception as exc:
+        if use_cookies or not cookie_file or not _needs_login(exc):
+            raise
+        return run(True)
 
 def download_video(url, directory, choice, cookie_file=None):
     url = _check_url(url)
@@ -246,8 +267,16 @@ def download_video(url, directory, choice, cookie_file=None):
         profile, selection = "legacy", choice
     if profile not in ("auto", "legacy", "alternate", "tv"):
         raise ValueError("Неизвестный профиль загрузки")
-    with YoutubeDL(_options(profile, cookie_file)) as ydl:
-        info = ydl.extract_info(url, download=False)
+    use_cookies = False
+    try:
+        with YoutubeDL(_options(profile)) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception as exc:
+        if not cookie_file or not _needs_login(exc):
+            raise
+        use_cookies = True
+        with YoutubeDL(_options(profile, cookie_file, True)) as ydl:
+            info = ydl.extract_info(url, download=False)
     valid = {item["id"] for item in _available(info, is_short=_is_youtube_short(url, info))}
     if selection not in valid:
         raise ValueError("Формат изменился. Обнови список форматов.")
@@ -255,14 +284,14 @@ def download_video(url, directory, choice, cookie_file=None):
     paths = []
     if kind == "merge":
         video_id, audio_id = fmt.split("+", 1)
-        _, video = _fetch(url, directory, video_id, "video", profile, cookie_file)
-        _, audio = _fetch(url, directory, audio_id, "audio", profile, cookie_file)
+        _, video = _fetch(url, directory, video_id, "video", profile, cookie_file, use_cookies)
+        _, audio = _fetch(url, directory, audio_id, "audio", profile, cookie_file, use_cookies)
         paths = [video, audio]
     elif kind == "audio":
-        _, audio = _fetch(url, directory, fmt, "audio", profile, cookie_file)
+        _, audio = _fetch(url, directory, fmt, "audio", profile, cookie_file, use_cookies)
         paths = ["", audio]
     else:
-        _, video = _fetch(url, directory, fmt, "video", profile, cookie_file)
+        _, video = _fetch(url, directory, fmt, "video", profile, cookie_file, use_cookies)
         paths = [video, ""]
     return json.dumps({
         "video": paths[0], "audio": paths[1], "merge": kind == "merge",
@@ -307,10 +336,18 @@ def latest_channel_videos(channel_url, cookie_file=None):
         raise ValueError("Нужна ссылка на YouTube-канал")
     if not url.endswith("/videos"):
         url += "/videos"
-    opts = _options(cookie_file=cookie_file)
-    opts.update({"extract_flat": "in_playlist", "playlistend": 2, "ignoreerrors": True})
-    with YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    def load_channel(use_cookies=False):
+        opts = _options(cookie_file=cookie_file, use_cookies=use_cookies)
+        opts.update({"extract_flat": "in_playlist", "playlistend": 2, "ignoreerrors": True})
+        with YoutubeDL(opts) as ydl:
+            return ydl.extract_info(url, download=False)
+
+    try:
+        info = load_channel()
+    except Exception as exc:
+        if not cookie_file or not _needs_login(exc):
+            raise
+        info = load_channel(use_cookies=True)
     if not info:
         raise RuntimeError("Не удалось прочитать последние видео канала")
     result = []
@@ -328,8 +365,14 @@ def latest_channel_videos(channel_url, cookie_file=None):
             # Resolve each video individually, then accept yt-dlp's upload
             # timestamp/date fields when upload_date is absent.
             try:
-                with YoutubeDL(_options(cookie_file=cookie_file)) as detail_ydl:
-                    detail = detail_ydl.extract_info(link, download=False)
+                try:
+                    with YoutubeDL(_options()) as detail_ydl:
+                        detail = detail_ydl.extract_info(link, download=False)
+                except Exception as exc:
+                    if not cookie_file or not _needs_login(exc):
+                        raise
+                    with YoutubeDL(_options(cookie_file=cookie_file, use_cookies=True)) as detail_ydl:
+                        detail = detail_ydl.extract_info(link, download=False)
                 if detail:
                     title = detail.get("title") or title
                     published_at = _published_date(detail) or published_at
@@ -351,13 +394,21 @@ def inspect_playlist(playlist_url, limit=100, cookie_file=None):
     limit = max(1, min(int(limit), 100))
     # Playlist metadata should fail quickly on a broken VPN/DNS connection.
     # Video downloads retain their separate retry policy.
-    opts = _options("auto", cookie_file)
-    opts.update({"noplaylist": False, "extract_flat": "in_playlist",
-                 "playlistend": limit, "ignoreerrors": True,
-                 "socket_timeout": 12, "retries": 1,
-                 "extractor_retries": 1, "fragment_retries": 1})
-    with YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    def load_playlist(use_cookies=False):
+        opts = _options("auto", cookie_file, use_cookies)
+        opts.update({"noplaylist": False, "extract_flat": "in_playlist",
+                     "playlistend": limit, "ignoreerrors": True,
+                     "socket_timeout": 12, "retries": 1,
+                     "extractor_retries": 1, "fragment_retries": 1})
+        with YoutubeDL(opts) as ydl:
+            return ydl.extract_info(url, download=False)
+
+    try:
+        info = load_playlist()
+    except Exception as exc:
+        if not cookie_file or not _needs_login(exc):
+            raise
+        info = load_playlist(use_cookies=True)
     if not info or not info.get("entries"):
         raise RuntimeError("Плейлист пуст или недоступен")
     entries = []
