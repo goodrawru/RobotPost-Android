@@ -306,7 +306,7 @@ def latest_channel_videos(channel_url):
     if not url.endswith("/videos"):
         url += "/videos"
     opts = _options()
-    opts.update({"extract_flat": "in_playlist", "playlistend": 5, "ignoreerrors": True})
+    opts.update({"extract_flat": "in_playlist", "playlistend": 2, "ignoreerrors": True})
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
     if not info:
@@ -334,7 +334,7 @@ def latest_channel_videos(channel_url):
             except Exception:
                 pass
             result.append({"title": title, "url": link, "published_at": published_at})
-        if len(result) == 5:
+        if len(result) == 2:
             break
     return json.dumps(result, ensure_ascii=False)
 
