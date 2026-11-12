@@ -51,11 +51,20 @@ def _is_original_audio(fmt):
 
 def _is_russian_original_audio(fmt):
     note = str(fmt.get("format_note") or "").lower()
+    language = str(fmt.get("language") or fmt.get("language_code") or "").strip().lower()
+    russian_language = (
+        language == "ru" or language.startswith(("ru-", "ru_", "rus-"))
+        or language in ("rus", "russian", "русский")
+    )
     russian_note = any(marker in note for marker in ("russian", "русск", "[ru]", "(ru)"))
-    explicit_other_language = any(marker in note for marker in (
-        "english", "английск", "[en]", "(en)", " japanese", " french", " spanish",
-    ))
-    return _is_original_audio(fmt) and russian_note and not explicit_other_language
+    other_language = (
+        language.startswith(("en", "ja", "fr", "es", "de", "it", "zh", "ko"))
+        or language in ("english", "japanese", "french", "spanish", "german", "italian")
+        or any(marker in note for marker in (
+            "english", "английск", "[en]", "(en)", "japanese", "french", "spanish",
+        ))
+    )
+    return _is_original_audio(fmt) and (russian_language or russian_note) and not other_language
 
 
 def _is_youtube_short(url, info):
@@ -125,6 +134,10 @@ def _inspect_best(url):
         try:
             warnings = []
             opts = _options(profile)
+            # Format discovery is metadata-only; short retries keep a slow
+            # client profile from stalling the screen. Downloads keep their
+            # normal retry policy.
+            opts.update({"socket_timeout": 20, "retries": 1, "extractor_retries": 1})
             opts["logger"] = _DiagnosticLogger(warnings)
             with YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=False)
