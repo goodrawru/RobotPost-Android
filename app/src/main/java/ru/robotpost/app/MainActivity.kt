@@ -163,6 +163,7 @@ class MainActivity : ComponentActivity() {
                 var selectedChannelVideos by remember { mutableStateOf(setOf<String>()) }
                 var channelsChecking by remember { mutableStateOf(false) }
                 var channelCheckStatus by remember { mutableStateOf("") }
+                var channelQueueMessage by remember { mutableStateOf("") }
                 var failedQueue by remember { mutableStateOf(prefs.getString("failedQueue", "")!!.lines().filter { it.isNotBlank() }) }
                 var failureReasons by remember { mutableStateOf(
                     runCatching {
@@ -335,7 +336,16 @@ class MainActivity : ComponentActivity() {
                                 NavigationRailItem(
                                     selected = page == i,
                                     onClick = { page = i },
-                                    icon = { Text(glyphs[i], style = MaterialTheme.typography.titleLarge) },
+                                    icon = {
+                                        val activeCount = if (queueRunning || downloadBusy) 1 else 0
+                                        if (i == 2 && activeCount > 0) {
+                                            BadgedBox(badge = { Badge { Text(activeCount.toString()) } }) {
+                                                Text(glyphs[i], style = MaterialTheme.typography.titleLarge)
+                                            }
+                                        } else {
+                                            Text(glyphs[i], style = MaterialTheme.typography.titleLarge)
+                                        }
+                                    },
                                     label = { Text(railLabels[i], maxLines = 1, style = MaterialTheme.typography.labelSmall) },
                                     alwaysShowLabel = true,
                                     colors = NavigationRailItemDefaults.colors(
@@ -397,7 +407,6 @@ class MainActivity : ComponentActivity() {
                                 var error by remember { mutableStateOf("") }
                                 var channelToDelete by remember { mutableStateOf<String?>(null) }
                                 Column(Modifier.fillMaxSize().padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Text("Источники видео", color = Muted)
                                     OutlinedTextField(
                                         value = input, onValueChange = { input = it; error = "" },
                                         label = { Text("Ссылка на YouTube-канал") },
@@ -454,53 +463,7 @@ class MainActivity : ComponentActivity() {
                                     ) { Text(if (channelsChecking) "Проверяю каналы..." else "↻  Проверить каналы") }
                                     if (channelCheckStatus.isNotBlank()) Text(channelCheckStatus, color = if (channelCheckStatus.contains("ошибок:")) Color(0xFFFFC48A) else Muted)
                                     val availableChannelVideos = channels.flatMap { channelLatestVideos[it].orEmpty() }
-                                    if (availableChannelVideos.isNotEmpty()) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("Выбрано: ${selectedChannelVideos.size} из ${availableChannelVideos.size}", modifier = Modifier.weight(1f), color = Muted)
-                                            TextButton(
-                                                enabled = !channelsChecking,
-                                                onClick = { selectedChannelVideos = availableChannelVideos.map { it.url }.toSet() }
-                                            ) { Text("Все") }
-                                            TextButton(
-                                                enabled = selectedChannelVideos.isNotEmpty(),
-                                                onClick = { selectedChannelVideos = emptySet() }
-                                            ) { Text("Сбросить") }
-                                        }
-                                        Button(
-                                            enabled = selectedChannelVideos.isNotEmpty() && !channelsChecking,
-                                            modifier = Modifier.fillMaxWidth(),
-                                            onClick = {
-                                                val selectedUrls = availableChannelVideos.map { it.url }.distinct()
-                                                    .filter { it in selectedChannelVideos }
-                                                val downloadedKeys = DownloadHistory.downloadedSourceKeys(this@MainActivity)
-                                                val queuedKeys = (pendingQueue + failedQueue)
-                                                    .map { DownloadHistory.sourceKey(it) }.toSet()
-                                                val newUrls = selectedUrls.filterNot {
-                                                    val key = DownloadHistory.sourceKey(it)
-                                                    key in downloadedKeys || key in queuedKeys
-                                                }
-                                                val downloadedSkipped = selectedUrls.count {
-                                                    DownloadHistory.sourceKey(it) in downloadedKeys
-                                                }
-                                                val queuedSkipped = selectedUrls.size - newUrls.size - downloadedSkipped
-                                                val merged = (pendingQueue + newUrls).distinct()
-                                                val saved = prefs.edit()
-                                                    .putString("pendingQueue", merged.joinToString("\n"))
-                                                    .commit()
-                                                if (saved) {
-                                                    pendingQueue = merged
-                                                    channelCheckStatus = buildString {
-                                                        append("Добавлено в очередь: ").append(newUrls.size)
-                                                        if (downloadedSkipped > 0) append(" · уже скачано: ").append(downloadedSkipped)
-                                                        if (queuedSkipped > 0) append(" · уже в очереди/ошибках: ").append(queuedSkipped)
-                                                    }
-                                                    selectedChannelVideos = emptySet()
-                                                } else {
-                                                    channelCheckStatus = "Не удалось сохранить очередь. Повтори попытку."
-                                                }
-                                            }
-                                        ) { Text("Добавить выбранные в очередь (${selectedChannelVideos.size})") }
-                                    }
+                                    
                                     if (channelToDelete != null) {
                                         AlertDialog(
                                             onDismissRequest = { channelToDelete = null },
@@ -567,7 +530,7 @@ class MainActivity : ComponentActivity() {
                                                             modifier = Modifier.fillMaxWidth(),
                                                             verticalAlignment = Alignment.CenterVertically
                                                         ) {
-                                                            Text("Последние 5 видео", modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                            Text("Последние 2 видео", modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                                             Text(if (expanded) "⌃" else "⌄", color = Accent)
                                                         }
                                                     }
@@ -618,6 +581,63 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }
                                         }
+                                    item {
+                                        if (availableChannelVideos.isNotEmpty()) {
+                                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(
+                                                        "Выбрано: ${selectedChannelVideos.size} из ${availableChannelVideos.size}",
+                                                        modifier = Modifier.weight(1f), color = Muted
+                                                    )
+                                                    TextButton(
+                                                        enabled = !channelsChecking,
+                                                        onClick = { selectedChannelVideos = availableChannelVideos.map { it.url }.toSet() }
+                                                    ) { Text("Все") }
+                                                    TextButton(
+                                                        enabled = selectedChannelVideos.isNotEmpty(),
+                                                        onClick = { selectedChannelVideos = emptySet() }
+                                                    ) { Text("Сбросить") }
+                                                }
+                                                Button(
+                                                    enabled = selectedChannelVideos.isNotEmpty() && !channelsChecking,
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    onClick = {
+                                                        val selectedUrls = availableChannelVideos.map { it.url }.distinct()
+                                                            .filter { it in selectedChannelVideos }
+                                                        val downloadedKeys = DownloadHistory.downloadedSourceKeys(this@MainActivity)
+                                                        val queuedKeys = (pendingQueue + failedQueue)
+                                                            .map { DownloadHistory.sourceKey(it) }.toSet()
+                                                        val newUrls = selectedUrls.filterNot {
+                                                            val key = DownloadHistory.sourceKey(it)
+                                                            key in downloadedKeys || key in queuedKeys
+                                                        }
+                                                        val downloadedSkipped = selectedUrls.count {
+                                                            DownloadHistory.sourceKey(it) in downloadedKeys
+                                                        }
+                                                        val queuedSkipped = selectedUrls.size - newUrls.size - downloadedSkipped
+                                                        val merged = (pendingQueue + newUrls).distinct()
+                                                        val saved = prefs.edit()
+                                                            .putString("pendingQueue", merged.joinToString("\n"))
+                                                            .commit()
+                                                        if (saved) {
+                                                            pendingQueue = merged
+                                                            channelQueueMessage = buildString {
+                                                                append("Добавлено в очередь: ").append(newUrls.size)
+                                                                if (downloadedSkipped > 0) append(" · уже скачано: ").append(downloadedSkipped)
+                                                                if (queuedSkipped > 0) append(" · уже в очереди/ошибках: ").append(queuedSkipped)
+                                                            }
+                                                            selectedChannelVideos = emptySet()
+                                                        } else {
+                                                            channelQueueMessage = "Не удалось сохранить очередь. Повтори попытку."
+                                                        }
+                                                    }
+                                                ) { Text("Добавить выбранные в очередь (${selectedChannelVideos.size})") }
+                                                if (channelQueueMessage.isNotBlank()) {
+                                                    Text(channelQueueMessage, color = Mint, style = MaterialTheme.typography.bodySmall)
+                                                }
+                                            }
+                                        }
+                                    }
                                     }
                                 }
                             }
