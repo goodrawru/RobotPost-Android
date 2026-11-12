@@ -1,3 +1,5 @@
+import java.util.zip.ZipFile
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -48,7 +50,7 @@ tasks.register("extractQuickJsRuntime") {
     outputs.dir(outputDirectory)
     doLast {
         val aar = quickJsRuntime.singleFile
-        val zip = java.util.zip.ZipFile(aar)
+        val zip = ZipFile(aar)
         try {
             listOf("arm64-v8a", "x86_64").forEach { abi ->
                 val entry = zip.getEntry("jni/" + abi + "/libqjs.so")
