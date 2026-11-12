@@ -16,6 +16,8 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 class YouTubeLoginActivity : ComponentActivity() {
     private lateinit var webView: WebView
@@ -33,6 +35,17 @@ class YouTubeLoginActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.rgb(12, 16, 25))
             setPadding(dp(12), dp(12), dp(12), dp(12))
+        }
+        // Keep controls clear of Android's system bars on edge-to-edge devices.
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(
+                dp(12) + bars.left,
+                dp(12) + bars.top,
+                dp(12) + bars.right,
+                dp(12) + bars.bottom
+            )
+            insets
         }
 
         val title = TextView(this).apply {
@@ -90,6 +103,7 @@ class YouTubeLoginActivity : ComponentActivity() {
 
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(8), 0, 0)
         }
         val closeButton = Button(this).apply {
             text = "Закрыть"
@@ -115,6 +129,7 @@ class YouTubeLoginActivity : ComponentActivity() {
         ))
 
         setContentView(root)
+        ViewCompat.requestApplyInsets(root)
         webView.loadUrl("https://www.youtube.com/")
     }
 

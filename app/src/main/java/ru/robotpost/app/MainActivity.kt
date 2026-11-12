@@ -324,7 +324,6 @@ class MainActivity : ComponentActivity() {
                 var newestFirst by remember { mutableStateOf(true) }
                 var confirmClear by remember { mutableStateOf(false) }
                 var channels by remember { mutableStateOf(prefs.getString("channels", "")!!.split("\n").filter { it.isNotBlank() }) }
-                var quality by remember { mutableStateOf(prefs.getString("quality", "Лучшее доступное") ?: "Лучшее доступное") }
                 var autoCheck by remember { mutableStateOf(prefs.getBoolean("autoCheck", false)) }
                 var description by remember { mutableStateOf(prefs.getString("description", "") ?: "") }
                 val unifiedPlaylistLink = remember(linkInput) {
@@ -874,12 +873,7 @@ class MainActivity : ComponentActivity() {
                                                                         .put("title", playlistPreviewTitle)
                                                                         .put("index", index + 1)
                                                                         .put("mode", playlistSaveMode)
-                                                                        .put("quality", when (quality) {
-                                                    "1080p" -> "1080"
-                                                    "720p" -> "720"
-                                                    "480p" -> "480"
-                                                    else -> "best"
-                                                })
+                                                                        .put("quality", "best")
                                                                         .put("root", chosenRoot))
                                                                 }
                                                             }
@@ -1454,28 +1448,6 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 }
-                                item { SectionTitle("Параметры загрузки") }
-                                item {
-                                    Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
-                                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                            Text("Предпочитаемое качество", fontWeight = FontWeight.SemiBold)
-                                            listOf("Лучшее доступное", "1080p", "720p", "480p").forEach { option ->
-                                                Row(
-                                                    Modifier.fillMaxWidth().clickable {
-                                                        quality = option
-                                                        prefs.edit().putString("quality", option).apply()
-                                                    }, verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    RadioButton(selected = quality == option, onClick = {
-                                                        quality = option
-                                                        prefs.edit().putString("quality", option).apply()
-                                                    })
-                                                    Text(option)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
                                 item {
                                     Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                         Column(Modifier.padding(16.dp)) {
@@ -1489,7 +1461,7 @@ class MainActivity : ComponentActivity() {
                                 item {
                                     Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                            Text("Сохраняются каналы, ссылки, описание и качество. Скачанные файлы в архив не входят.", color = Muted)
+                                            Text("Сохраняются каналы, ссылки и описание. Скачанные файлы в архив не входят.", color = Muted)
                                             Button(onClick = { exportBackup.launch("robotpost-backup.json") }, modifier = Modifier.fillMaxWidth()) {
                                                 Text("Создать резервную копию")
                                             }
@@ -1500,7 +1472,6 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 }
-                                item { Text("VPN управляется отдельно. RobotPost не проверяет VPN.", color = Muted) }
                                 item { Text("RobotPost Android · UI alpha 0.2", color = Muted, style = MaterialTheme.typography.labelMedium) }
                             }
                         }
