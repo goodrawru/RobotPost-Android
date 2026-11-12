@@ -18,6 +18,7 @@ import java.util.Locale
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -152,6 +153,14 @@ class MainActivity : ComponentActivity() {
                     extraLarge = RoundedCornerShape(20.dp)
                 )
             ) {
+                var youtubeAccountConnected by remember { mutableStateOf(YouTubeAuthStore.hasCookies(this@MainActivity)) }
+                var youtubeAuthMessage by remember { mutableStateOf("") }
+                val youtubeLoginLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.StartActivityForResult()
+                ) {
+                    youtubeAccountConnected = YouTubeAuthStore.hasCookies(this@MainActivity)
+                    youtubeAuthMessage = if (youtubeAccountConnected) "Вход в аккаунт сохранён на этом телефоне." else "Вход не сохранён. Заверши авторизацию и нажми «Сохранить вход»."
+                }
                 var page by remember { mutableIntStateOf(if (intent?.action == Intent.ACTION_SEND) 2 else prefs.getInt("lastPage", 0).coerceIn(0, 4)) }
                 LaunchedEffect(page) { prefs.edit().putInt("lastPage", page).apply() }
                 var savedLinks by remember { mutableStateOf(prefs.getString("savedLinks", "")!!.lines().filter { it.isNotBlank() }) }
@@ -303,7 +312,11 @@ class MainActivity : ComponentActivity() {
                             "Не найдена русская оригинальная дорожка. Альтернативный дубляж не будет выбран."
                         } else "Найдено форматов: " + formatChoices.size
                     } catch (e: Exception) {
-                        inspectStatus = "Ошибка поиска: " + (e.localizedMessage ?: "Нет доступа к видео")
+                        val errorText = e.localizedMessage ?: "Нет доступа к видео"
+                        inspectStatus = if (errorText.contains("Sign in to confirm", ignoreCase = true) ||
+                            errorText.contains("Войдите в аккаунт", ignoreCase = true)) {
+                            "YouTube просит подтвердить вход. Подключи аккаунт в «Настройки» → «Аккаунт YouTube» и повтори поиск."
+                        } else "Ошибка поиска: " + errorText
                     } finally { inspecting = false }
                 }
 
@@ -1405,6 +1418,42 @@ class MainActivity : ComponentActivity() {
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
+                                item { SectionTitle("Аккаунт YouTube") }
+                                item {
+                                    Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
+                                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            Text(
+                                                if (youtubeAccountConnected) "Подключён · сессия сохранена" else "Не подключён",
+                                                color = if (youtubeAccountConnected) Mint else Muted,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            Text(
+                                                "Вход откроется в отдельном окне YouTube. Пароль RobotPost не запрашивает; сессия хранится локально в зашифрованном виде и используется только при работе с YouTube.",
+                                                color = Muted, style = MaterialTheme.typography.bodySmall
+                                            )
+                                            Button(
+                                                onClick = { youtubeLoginLauncher.launch(Intent(this@MainActivity, YouTubeLoginActivity::class.java)) },
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) { Text(if (youtubeAccountConnected) "Обновить вход YouTube" else "Войти в аккаунт YouTube") }
+                                            if (youtubeAccountConnected) {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        YouTubeAuthStore.clear(this@MainActivity)
+                                                        youtubeAccountConnected = false
+                                                        youtubeAuthMessage = "Сессия YouTube удалена с телефона."
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) { Text("Выйти из аккаунта") }
+                                            }
+                                            if (youtubeAuthMessage.isNotBlank()) {
+                                                Text(youtubeAuthMessage, color = if (youtubeAccountConnected) Mint else Muted,
+                                                    style = MaterialTheme.typography.bodySmall)
+                                            }
+                                            Text("Используй вход только при запросе YouTube. Сервис может ограничивать аккаунты, используемые загрузчиками.",
+                                                color = Muted, style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    }
+                                }
                                 item { SectionTitle("Параметры загрузки") }
                                 item {
                                     Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {

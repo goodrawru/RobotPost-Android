@@ -15,7 +15,7 @@ def _check_url(url):
         raise ValueError("Нужна ссылка https://youtube.com или https://youtu.be")
     return url
 
-def _options(profile="legacy"):
+def _options(profile="legacy", cookie_file=None):
     opts = {
         "noplaylist": True, "quiet": True, "no_warnings": False,
         "retries": 4, "fragment_retries": 4, "socket_timeout": 35,
@@ -31,6 +31,8 @@ def _options(profile="legacy"):
     opts["extractor_args"] = {"youtube": {"lang": ["ru"]}}
     if profile in clients:
         opts["extractor_args"]["youtube"]["player_client"] = clients[profile]
+    if cookie_file and os.path.isfile(cookie_file):
+        opts["cookiefile"] = cookie_file
     return opts
 
 def _has_original_marker(fmt):
@@ -126,14 +128,14 @@ class _DiagnosticLogger:
         self.warning(message)
 
 
-def _inspect_best(url):
+def _inspect_best(url, cookie_file=None):
     best_info, best_choices, best_profile = None, [], "legacy"
     failures = []
     reports = []
     for profile in ("auto", "legacy", "alternate", "tv"):
         try:
             warnings = []
-            opts = _options(profile)
+            opts = _options(profile, cookie_file)
             # Format discovery is metadata-only; short retries keep a slow
             # client profile from stalling the screen. Downloads keep their
             # normal retry policy.
@@ -160,8 +162,8 @@ def _inspect_best(url):
         raise RuntimeError("Не удалось получить форматы: " + "; ".join(failures))
     return best_info, best_choices, best_profile, reports
 
-def inspect_video(url):
-    info, choices, profile, reports = _inspect_best(_check_url(url))
+def inspect_video(url, cookie_file=None):
+    info, choices, profile, reports = _inspect_best(_check_url(url), cookie_file)
     for choice in choices:
         choice["id"] = profile + "|" + choice["id"]
     raw_formats = info.get("formats") or []
@@ -224,8 +226,8 @@ def _progress_hook(directory, stage):
     return hook
 
 
-def _fetch(url, directory, fmt_id, prefix, profile="legacy"):
-    opts = _options(profile)
+def _fetch(url, directory, fmt_id, prefix, profile="legacy", cookie_file=None):
+    opts = _options(profile, cookie_file)
     opts["progress_hooks"] = [_progress_hook(directory, prefix)]
     opts.update({"format": fmt_id, "outtmpl": os.path.join(directory, prefix + ".%(ext)s"),
                  "overwrites": True, "restrictfilenames": True})
@@ -233,7 +235,7 @@ def _fetch(url, directory, fmt_id, prefix, profile="legacy"):
         info = ydl.extract_info(url, download=True)
         return info, _get_file(info, ydl)
 
-def download_video(url, directory, choice):
+def download_video(url, directory, choice, cookie_file=None):
     url = _check_url(url)
     os.makedirs(directory, exist_ok=True)
     if os.path.exists(os.path.join(directory, "cancel.flag")):
@@ -244,7 +246,7 @@ def download_video(url, directory, choice):
         profile, selection = "legacy", choice
     if profile not in ("auto", "legacy", "alternate", "tv"):
         raise ValueError("Неизвестный профиль загрузки")
-    with YoutubeDL(_options(profile)) as ydl:
+    with YoutubeDL(_options(profile, cookie_file)) as ydl:
         info = ydl.extract_info(url, download=False)
     valid = {item["id"] for item in _available(info, is_short=_is_youtube_short(url, info))}
     if selection not in valid:
@@ -253,14 +255,14 @@ def download_video(url, directory, choice):
     paths = []
     if kind == "merge":
         video_id, audio_id = fmt.split("+", 1)
-        _, video = _fetch(url, directory, video_id, "video", profile)
-        _, audio = _fetch(url, directory, audio_id, "audio", profile)
+        _, video = _fetch(url, directory, video_id, "video", profile, cookie_file)
+        _, audio = _fetch(url, directory, audio_id, "audio", profile, cookie_file)
         paths = [video, audio]
     elif kind == "audio":
-        _, audio = _fetch(url, directory, fmt, "audio", profile)
+        _, audio = _fetch(url, directory, fmt, "audio", profile, cookie_file)
         paths = ["", audio]
     else:
-        _, video = _fetch(url, directory, fmt, "video", profile)
+        _, video = _fetch(url, directory, fmt, "video", profile, cookie_file)
         paths = [video, ""]
     return json.dumps({
         "video": paths[0], "audio": paths[1], "merge": kind == "merge",
@@ -299,13 +301,13 @@ def _published_date(info):
     return ""
 
 
-def latest_channel_videos(channel_url):
+def latest_channel_videos(channel_url, cookie_file=None):
     url = _check_url(channel_url).rstrip("/")
     if "/@" not in url and "/channel/" not in url and "/c/" not in url and "/user/" not in url:
         raise ValueError("Нужна ссылка на YouTube-канал")
     if not url.endswith("/videos"):
         url += "/videos"
-    opts = _options()
+    opts = _options(cookie_file=cookie_file)
     opts.update({"extract_flat": "in_playlist", "playlistend": 2, "ignoreerrors": True})
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
@@ -326,7 +328,7 @@ def latest_channel_videos(channel_url):
             # Resolve each video individually, then accept yt-dlp's upload
             # timestamp/date fields when upload_date is absent.
             try:
-                with YoutubeDL(_options()) as detail_ydl:
+                with YoutubeDL(_options(cookie_file=cookie_file)) as detail_ydl:
                     detail = detail_ydl.extract_info(link, download=False)
                 if detail:
                     title = detail.get("title") or title
@@ -339,7 +341,7 @@ def latest_channel_videos(channel_url):
     return json.dumps(result, ensure_ascii=False)
 
 
-def inspect_playlist(playlist_url, limit=100):
+def inspect_playlist(playlist_url, limit=100, cookie_file=None):
     """Read playlist entries without downloading media; cap expansion for mobile."""
     url = _check_url(playlist_url)
     parsed = urlparse(url)
@@ -349,7 +351,7 @@ def inspect_playlist(playlist_url, limit=100):
     limit = max(1, min(int(limit), 100))
     # Playlist metadata should fail quickly on a broken VPN/DNS connection.
     # Video downloads retain their separate retry policy.
-    opts = _options("auto")
+    opts = _options("auto", cookie_file)
     opts.update({"noplaylist": False, "extract_flat": "in_playlist",
                  "playlistend": limit, "ignoreerrors": True,
                  "socket_timeout": 12, "retries": 1,

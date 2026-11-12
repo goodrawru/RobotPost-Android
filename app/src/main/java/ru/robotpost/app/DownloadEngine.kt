@@ -20,6 +20,9 @@ object DownloadEngine {
             .joinToString(" | ")
         val lower = raw.lowercase(Locale.ROOT)
         return when {
+            "sign in to confirm" in lower || "войдите в аккаунт" in lower ||
+                "login required" in lower ->
+                "YouTube просит подтвердить вход. Подключите аккаунт в «Настройки» → «Аккаунт YouTube» и повторите загрузку."
             "no address associated with hostname" in lower ||
                 "name or service not known" in lower ||
                 "temporary failure in name resolution" in lower ||
@@ -38,24 +41,31 @@ object DownloadEngine {
         return Python.getInstance()
     }
 
-    fun latest(context: Context, channelUrl: String): List<LatestVideo> {
-        val json = org.json.JSONArray(python(context).getModule("downloader")
-            .callAttr("latest_channel_videos", channelUrl).toString())
-        return (0 until json.length()).map { i ->
-            val item = json.getJSONObject(i)
-            LatestVideo(
-                title = item.optString("title", "Видео"),
-                url = item.getString("url"),
-                publishedAt = item.optString("published_at", "")
-            )
+    fun latest(context: Context, channelUrl: String): List<LatestVideo> =
+        YouTubeAuthStore.withCookieFile(context) { cookieFile ->
+            val json = org.json.JSONArray(python(context).getModule("downloader")
+                .callAttr("latest_channel_videos", channelUrl, cookieFile).toString())
+            (0 until json.length()).map { i ->
+                val item = json.getJSONObject(i)
+                LatestVideo(
+                    title = item.optString("title", "Видео"),
+                    url = item.getString("url"),
+                    publishedAt = item.optString("published_at", "")
+                )
+            }
         }
-    }
 
     fun playlist(context: Context, url: String, limit: Int = 100): JSONObject =
-        JSONObject(python(context).getModule("downloader").callAttr("inspect_playlist", url, limit).toString())
+        YouTubeAuthStore.withCookieFile(context) { cookieFile ->
+            JSONObject(python(context).getModule("downloader")
+                .callAttr("inspect_playlist", url, limit, cookieFile).toString())
+        }
 
     fun inspect(context: Context, url: String): JSONObject =
-        JSONObject(python(context).getModule("downloader").callAttr("inspect_video", url).toString())
+        YouTubeAuthStore.withCookieFile(context) { cookieFile ->
+            JSONObject(python(context).getModule("downloader")
+                .callAttr("inspect_video", url, cookieFile).toString())
+        }
 
     fun download(context: Context, url: String, root: Uri, formatId: String, onTemp: (File) -> Unit = {}, onProgress: (String) -> Unit = {}, includeDescription: Boolean = true, videoOnly: Boolean = false, playlistName: String = "", playlistIndex: Int = 0, saveMode: String = "full"): String {
         require(saveMode in setOf("full", "video", "video_description", "audio")) {
@@ -85,8 +95,10 @@ object DownloadEngine {
                 }
             }.apply { isDaemon = true; start() }
             val json = try {
-                python(context).getModule("downloader")
-                    .callAttr("download_video", url, temp.absolutePath, formatId).toString()
+                YouTubeAuthStore.withCookieFile(context) { cookieFile ->
+                    python(context).getModule("downloader")
+                        .callAttr("download_video", url, temp.absolutePath, formatId, cookieFile).toString()
+                }
             } finally { watcher.interrupt() }
             if (File(temp, "cancel.flag").exists()) error("Загрузка отменена пользователем")
             val info = JSONObject(json)

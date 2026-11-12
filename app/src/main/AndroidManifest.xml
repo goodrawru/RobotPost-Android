@@ -8,6 +8,7 @@
         <service android:name=".DownloadForegroundService"
             android:exported="false"
             android:foregroundServiceType="dataSync"/>
+        <activity android:name=".YouTubeLoginActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
