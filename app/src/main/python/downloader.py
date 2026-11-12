@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from datetime import datetime, timezone
 import yt_dlp
 from urllib.parse import urlparse
 from yt_dlp import YoutubeDL
@@ -258,6 +259,33 @@ def download_video(url, directory, choice):
                      for chapter in (info.get("chapters") or [])],
     }, ensure_ascii=False)
 
+def _published_date(info):
+    """Format the best available YouTube publication date as DD.MM.YYYY."""
+    for key in ("upload_date", "timestamp", "release_date", "release_timestamp"):
+        value = info.get(key)
+        if value in (None, ""):
+            continue
+        text = str(value).strip()
+        if len(text) == 8 and text.isdigit():
+            return f"{text[6:8]}.{text[4:6]}.{text[:4]}"
+        if len(text) >= 10 and text[4:5] == "-" and text[7:8] == "-":
+            try:
+                parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                return parsed.astimezone(timezone.utc).strftime("%d.%m.%Y")
+            except ValueError:
+                pass
+        try:
+            timestamp = float(value)
+            if timestamp > 100_000_000_000:
+                timestamp /= 1000.0
+            return datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%d.%m.%Y")
+        except (TypeError, ValueError, OverflowError, OSError):
+            continue
+    return ""
+
+
 def latest_channel_videos(channel_url):
     url = _check_url(channel_url).rstrip("/")
     if "/@" not in url and "/channel/" not in url and "/c/" not in url and "/user/" not in url:
@@ -280,22 +308,18 @@ def latest_channel_videos(channel_url):
             link = "https://www.youtube.com/watch?v=" + str(video_id or "")
         if video_id and link.startswith("https://"):
             title = item.get("title") or "Видео"
-            published_at = item.get("upload_date") or ""
-            # Flat channel entries may omit exact dates and localized titles.
-            # Resolve each of the five videos individually, keeping the channel
-            # list usable if one video's metadata cannot be read.
+            published_at = _published_date(item)
+            # Flat channel entries may omit dates and localized titles.
+            # Resolve each video individually, then accept yt-dlp's upload
+            # timestamp/date fields when upload_date is absent.
             try:
                 with YoutubeDL(_options()) as detail_ydl:
                     detail = detail_ydl.extract_info(link, download=False)
                 if detail:
                     title = detail.get("title") or title
-                    published_at = detail.get("upload_date") or published_at
+                    published_at = _published_date(detail) or published_at
             except Exception:
                 pass
-            if len(published_at) == 8 and published_at.isdigit():
-                published_at = f"{published_at[6:8]}.{published_at[4:6]}.{published_at[:4]}"
-            else:
-                published_at = ""
             result.append({"title": title, "url": link, "published_at": published_at})
         if len(result) == 5:
             break
