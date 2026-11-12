@@ -36,6 +36,10 @@ object DownloadEngine {
             else -> error.localizedMessage ?: "Неизвестная ошибка загрузки"
         }
     }
+    private fun quickJsPath(context: Context): String =
+        File(context.applicationInfo.nativeLibraryDir, "libqjs.so")
+            .takeIf { it.isFile }?.absolutePath.orEmpty()
+
     private fun python(context: Context): Python {
         if (!Python.isStarted()) Python.start(AndroidPlatform(context.applicationContext))
         return Python.getInstance()
@@ -44,7 +48,7 @@ object DownloadEngine {
     fun latest(context: Context, channelUrl: String): List<LatestVideo> =
         YouTubeAuthStore.withCookieFile(context) { cookieFile ->
             val json = org.json.JSONArray(python(context).getModule("downloader")
-                .callAttr("latest_channel_videos", channelUrl, cookieFile).toString())
+                .callAttr("latest_channel_videos", channelUrl, cookieFile, quickJsPath(context)).toString())
             (0 until json.length()).map { i ->
                 val item = json.getJSONObject(i)
                 LatestVideo(
@@ -58,13 +62,13 @@ object DownloadEngine {
     fun playlist(context: Context, url: String, limit: Int = 100): JSONObject =
         YouTubeAuthStore.withCookieFile(context) { cookieFile ->
             JSONObject(python(context).getModule("downloader")
-                .callAttr("inspect_playlist", url, limit, cookieFile).toString())
+                .callAttr("inspect_playlist", url, limit, cookieFile, quickJsPath(context)).toString())
         }
 
     fun inspect(context: Context, url: String): JSONObject =
         YouTubeAuthStore.withCookieFile(context) { cookieFile ->
             JSONObject(python(context).getModule("downloader")
-                .callAttr("inspect_video", url, cookieFile).toString())
+                .callAttr("inspect_video", url, cookieFile, quickJsPath(context)).toString())
         }
 
     fun download(context: Context, url: String, root: Uri, formatId: String, onTemp: (File) -> Unit = {}, onProgress: (String) -> Unit = {}, includeDescription: Boolean = true, videoOnly: Boolean = false, playlistName: String = "", playlistIndex: Int = 0, saveMode: String = "full"): String {
@@ -97,7 +101,7 @@ object DownloadEngine {
             val json = try {
                 YouTubeAuthStore.withCookieFile(context) { cookieFile ->
                     python(context).getModule("downloader")
-                        .callAttr("download_video", url, temp.absolutePath, formatId, cookieFile).toString()
+                        .callAttr("download_video", url, temp.absolutePath, formatId, cookieFile, quickJsPath(context)).toString()
                 }
             } finally { watcher.interrupt() }
             if (File(temp, "cancel.flag").exists()) error("Загрузка отменена пользователем")

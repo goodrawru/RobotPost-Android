@@ -4,6 +4,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.chaquo.python")
 }
+
+val quickJsRuntime by configurations.creating {
+    isTransitive = false
+}
 android {
     namespace = "ru.robotpost.app"
     compileSdk = 35
@@ -25,7 +29,7 @@ android {
 chaquopy {
     defaultConfig {
         version = "3.11"
-        pip { install("yt-dlp") }
+        pip { install("yt-dlp[default]") }
     }
 }
 dependencies {
@@ -36,4 +40,31 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
+    add(quickJsRuntime.name, "io.github.junkfood02.youtubedl-android:library:0.18.1")
+}
+
+tasks.register("extractQuickJsRuntime") {
+    val outputDirectory = layout.projectDirectory.dir("src/main/jniLibs").asFile
+    outputs.dir(outputDirectory)
+    doLast {
+        val aar = quickJsRuntime.singleFile
+        val zip = java.util.zip.ZipFile(aar)
+        try {
+            listOf("arm64-v8a", "x86_64").forEach { abi ->
+                val entry = zip.getEntry("jni/" + abi + "/libqjs.so")
+                    ?: throw GradleException("QuickJS runtime missing for " + abi)
+                val output = File(outputDirectory, abi + "/libqjs.so")
+                output.parentFile.mkdirs()
+                zip.getInputStream(entry).use { input ->
+                    output.outputStream().use { target -> input.copyTo(target) }
+                }
+            }
+        } finally {
+            zip.close()
+        }
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn("extractQuickJsRuntime")
 }
