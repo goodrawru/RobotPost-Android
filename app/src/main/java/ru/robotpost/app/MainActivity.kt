@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.content.Intent
 import android.net.Uri
 import android.content.ContentResolver
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import org.json.JSONObject
@@ -27,6 +28,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -216,10 +218,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 var clearHistoryConfirm by remember { mutableStateOf(false) }
-                var editDescriptionUri by remember { mutableStateOf<Uri?>(null) }
-                var editDescriptionText by remember { mutableStateOf("") }
-                var editDescriptionError by remember { mutableStateOf("") }
-                var editDescriptionSaving by remember { mutableStateOf(false) }
+                var archiveDescriptionPackage by remember { mutableStateOf<String?>(null) }
                 var downloadStatus by remember { mutableStateOf("") }
                 var inspectStatus by remember { mutableStateOf("") }
                 var formatChoices by remember { mutableStateOf(listOf<Pair<String, String>>()) }
@@ -1131,22 +1130,10 @@ class MainActivity : ComponentActivity() {
                                                         }) { Text(label) }
                                                     }
                                                 }
-                                                TextButton(onClick = {
-                                                    try {
-                                                        val root = prefs.getString("archiveRoot", "").orEmpty()
-                                                        require(root.isNotBlank()) { "Сначала выбери папку архива" }
-                                                        val uri = ArchiveBrowser.files(this@MainActivity, Uri.parse(root), entry.optString("name"))["description.txt"]
-                                                            ?: error("Описание не найдено")
-                                                        val text = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-                                                            ?: error("Не удалось прочитать описание")
-                                                        editDescriptionUri = uri
-                                                        editDescriptionText = text
-                                                        editDescriptionError = ""
-                                                    } catch (e: Exception) {
-                                                        android.widget.Toast.makeText(this@MainActivity,
-                                                            DownloadEngine.readableError(e), android.widget.Toast.LENGTH_LONG).show()
-                                                    }
-                                                }) { Text("Редактировать описание") }
+                                                FilledTonalButton(
+                                                    onClick = { archiveDescriptionPackage = entry.optString("name") },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) { Text("Редактировать описание") }
                                                 TextButton(onClick = {
                                                     try {
                                                         val root = prefs.getString("archiveRoot", "").orEmpty()
@@ -1185,48 +1172,6 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }
                                         }
-                                    }
-                                    if (editDescriptionUri != null) item {
-                                        AlertDialog(
-                                            onDismissRequest = { if (!editDescriptionSaving) editDescriptionUri = null },
-                                            title = { Text("Редактирование описания") },
-                                            text = {
-                                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                    OutlinedTextField(
-                                                        value = editDescriptionText,
-                                                        onValueChange = { editDescriptionText = it },
-                                                        label = { Text("description.txt") },
-                                                        modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp, max = 350.dp),
-                                                        minLines = 6
-                                                    )
-                                                    if (editDescriptionError.isNotBlank()) Text(editDescriptionError, color = MaterialTheme.colorScheme.error)
-                                                }
-                                            },
-                                            confirmButton = {
-                                                TextButton(enabled = !editDescriptionSaving, onClick = {
-                                                    val uri = editDescriptionUri ?: return@TextButton
-                                                    editDescriptionSaving = true
-                                                    val updated = editDescriptionText
-                                                    downloadScope.launch {
-                                                        try {
-                                                            withContext(Dispatchers.IO) {
-                                                                contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use { it.write(updated) }
-                                                                    ?: error("Нет доступа к записи файла")
-                                                            }
-                                                            editDescriptionUri = null
-                                                            editDescriptionError = ""
-                                                        } catch (e: Exception) {
-                                                            editDescriptionError = DownloadEngine.readableError(e)
-                                                        } finally {
-                                                            editDescriptionSaving = false
-                                                        }
-                                                    }
-                                                }) { Text(if (editDescriptionSaving) "Сохраняю..." else "Сохранить") }
-                                            },
-                                            dismissButton = {
-                                                TextButton(enabled = !editDescriptionSaving, onClick = { editDescriptionUri = null }) { Text("Отмена") }
-                                            }
-                                        )
                                     }
                                     if (clearHistoryConfirm) item {
                                         AlertDialog(
@@ -1304,9 +1249,107 @@ class MainActivity : ComponentActivity() {
                     }
                     }
                 }
+                archiveDescriptionPackage?.let { packageName ->
+                    ArchiveDescriptionDialog(
+                        archiveRoot = chosenRoot,
+                        packageName = packageName,
+                        onDismiss = { archiveDescriptionPackage = null }
+                    )
+                }
             }
         }
     }
+}
+
+@Composable
+private fun ArchiveDescriptionDialog(
+    archiveRoot: String,
+    packageName: String,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val resolver = context.contentResolver
+    val scope = rememberCoroutineScope()
+    var fileUri by remember(archiveRoot, packageName) { mutableStateOf<Uri?>(null) }
+    var description by remember(archiveRoot, packageName) { mutableStateOf("") }
+    var failure by remember(archiveRoot, packageName) { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
+
+    LaunchedEffect(archiveRoot, packageName) {
+        try {
+            val (uri, text) = withContext(Dispatchers.IO) {
+                require(archiveRoot.isNotBlank()) { "Сначала выберите папку архива" }
+                val uri = ArchiveBrowser.files(context, Uri.parse(archiveRoot), packageName)["description.txt"]
+                    ?: error("Описание отсутствует в папке комплекта")
+                val text = resolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                    ?: error("Не удалось прочитать описание")
+                uri to text
+            }
+            description = text
+            fileUri = uri
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            failure = "Не удалось открыть описание. ${DownloadEngine.readableError(e)}"
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text("Редактирование описания") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (fileUri != null) {
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        enabled = !saving,
+                        label = { Text("Описание") },
+                        minLines = 4,
+                        maxLines = 8,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else if (failure == null) {
+                    CircularProgressIndicator(Modifier.size(24.dp))
+                }
+                failure?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = fileUri != null && !saving,
+                onClick = {
+                    val uri = fileUri ?: return@Button
+                    val updated = description
+                    saving = true
+                    failure = null
+                    scope.launch {
+                        try {
+                            withContext(Dispatchers.IO) {
+                                resolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
+                                    it.write(updated)
+                                } ?: error("Нет доступа к записи файла")
+                            }
+                            onDismiss()
+                            android.widget.Toast.makeText(context, "Описание сохранено",
+                                android.widget.Toast.LENGTH_SHORT).show()
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            failure = "Не удалось сохранить описание. ${DownloadEngine.readableError(e)}"
+                        } finally {
+                            saving = false
+                        }
+                    }
+                }
+            ) { Text(if (saving) "Сохраняется…" else "Сохранить") }
+        },
+        dismissButton = {
+            TextButton(enabled = !saving, onClick = onDismiss) {
+                Text(if (fileUri == null) "Закрыть" else "Отмена")
+            }
+        }
+    )
 }
 
 @Composable

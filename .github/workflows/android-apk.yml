@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/android-apk.yml'
+      - 'app/src/main/java/ru/robotpost/app/MainActivity.kt'
 permissions:
   contents: read
 jobs:
