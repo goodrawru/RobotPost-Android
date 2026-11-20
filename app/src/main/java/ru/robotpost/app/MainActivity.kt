@@ -955,7 +955,7 @@ class MainActivity : ComponentActivity() {
                                                     progress = { queueItemPercent / 100f },
                                                     modifier = Modifier.fillMaxWidth()
                                                 )
-                                                Text("${queueItemPercent}% · текущий файл", color = Muted,
+                                                Text("${queueItemPercent}% · текущий этап", color = Muted,
                                                     style = MaterialTheme.typography.labelSmall)
                                                 LinearProgressIndicator(
                                                     progress = { if (queueTotal > 0) (queueProcessed.toFloat() / queueTotal).coerceIn(0f, 1f) else 0f },

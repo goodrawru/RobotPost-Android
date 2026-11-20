@@ -128,8 +128,20 @@ object DownloadEngine {
             var audio = audioPath.takeIf { it.isNotBlank() }?.let(::File)
             if (info.optBoolean("merge")) {
                 require(video != null && audio != null) { "Не хватает потоков для объединения" }
-                onProgress("Объединяю видео и аудио…")
-                video = Mp4Muxer.combine(video, audio, File(temp, "merged.mp4"))
+                onProgress("Объединяю видео и аудио: 0%")
+                val available = android.os.StatFs(temp.absolutePath).availableBytes
+                require(available >= video.length() + audio.length()) {
+                    "Недостаточно свободного места для объединения видео и аудио"
+                }
+                val cancelFlag = File(temp, "cancel.flag")
+                video = Mp4Muxer.combine(
+                    video, audio, File(temp, "merged.mp4"),
+                    checkCancelled = {
+                        if (cancelFlag.exists()) error("Загрузка отменена пользователем")
+                    },
+                    onProgress = { onProgress("Объединяю видео и аудио: $it%") },
+                    onFinalizing = { onProgress("Завершаю запись MP4: 100%") }
+                )
             }
             if (!videoOnly && playlistName.isBlank() && saveMode != "video_description" && saveMode != "video" && video != null && audio == null) {
                 onProgress("Извлекаю аудио…")
