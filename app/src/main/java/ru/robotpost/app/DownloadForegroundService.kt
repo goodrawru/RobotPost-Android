@@ -168,8 +168,12 @@ class DownloadForegroundService : Service() {
                     status("Скачиваю: " + itemTitle)
                     val saved = withContext(Dispatchers.IO) {
                         DownloadEngine.download(this@DownloadForegroundService, url, Uri.parse(root), job?.getString("format") ?: selected!!.getString("id"),
-                            onTemp = { activeTemp = it },
-                            onProgress = { progress ->
+                            onTemp = {
+                                activeTemp = it
+                                if (stopping) File(it, "cancel.flag").writeText("cancel")
+                            },
+                            onProgress = progress@{ progress ->
+                                if (stopping) return@progress
                                 Regex("""(\d{1,3})%""").find(progress)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let {
                                     prefs.edit().putInt("queueItemPercent", it.coerceIn(0, 100)).apply()
                                 }

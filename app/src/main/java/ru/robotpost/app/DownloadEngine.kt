@@ -82,15 +82,28 @@ object DownloadEngine {
         try {
             val watcher = Thread {
                 val status = File(temp, "progress.json")
+                var previous = ""
+                var lastProgressAt = 0L
+                var waitingReported = false
                 while (!Thread.currentThread().isInterrupted) {
                     try {
                         if (status.isFile) {
-                            val data = JSONObject(status.readText())
+                            val snapshot = status.readText()
+                            val data = JSONObject(snapshot)
                             val stage = if (data.optString("stage") == "audio") "Аудио" else "Видео"
                             val percent = data.optDouble("percent", -1.0)
                             val speed = data.optDouble("speed", 0.0) / 1048576.0
                             val message = if (percent >= 0) "$stage: ${percent.toInt()}% · ${"%.1f".format(Locale.ROOT, speed)} МБ/с" else "$stage: скачивание..."
-                            onProgress(message)
+                            val now = android.os.SystemClock.elapsedRealtime()
+                            if (snapshot != previous) {
+                                previous = snapshot
+                                lastProgressAt = now
+                                waitingReported = false
+                                onProgress(message)
+                            } else if (!waitingReported && percent < 100 && now - lastProgressAt >= 15_000L) {
+                                waitingReported = true
+                                onProgress("$stage: ожидание данных от YouTube…")
+                            }
                         }
                         Thread.sleep(500)
                     } catch (_: InterruptedException) {
@@ -103,7 +116,10 @@ object DownloadEngine {
                     python(context).getModule("downloader")
                         .callAttr("download_video", url, temp.absolutePath, formatId, cookieFile, quickJsPath(context)).toString()
                 }
-            } finally { watcher.interrupt() }
+            } finally {
+                watcher.interrupt()
+                watcher.join()
+            }
             if (File(temp, "cancel.flag").exists()) error("Загрузка отменена пользователем")
             val info = JSONObject(json)
             val videoPath = info.optString("video")
@@ -112,9 +128,11 @@ object DownloadEngine {
             var audio = audioPath.takeIf { it.isNotBlank() }?.let(::File)
             if (info.optBoolean("merge")) {
                 require(video != null && audio != null) { "Не хватает потоков для объединения" }
+                onProgress("Объединяю видео и аудио…")
                 video = Mp4Muxer.combine(video, audio, File(temp, "merged.mp4"))
             }
             if (!videoOnly && playlistName.isBlank() && saveMode != "video_description" && saveMode != "video" && video != null && audio == null) {
+                onProgress("Извлекаю аудио…")
                 audio = AudioExtractor.extract(video, File(temp, "audio.m4a"))
             }
             val stamp = info.optString("date")
@@ -122,6 +140,7 @@ object DownloadEngine {
                 "${stamp.substring(6, 8)}.${stamp.substring(4, 6)}.${stamp.substring(2, 4)}"
             else SimpleDateFormat("dd.MM.yy", Locale.ROOT).format(Date())
             if (File(temp, "cancel.flag").exists()) error("Загрузка отменена пользователем")
+            onProgress("Сохраняю файлы в архив…")
             if (playlistName.isNotBlank()) {
                 require(video != null) { "Для режима только видео нужен видеопоток" }
                 return ArchiveExporter.exportPlaylistVideo(

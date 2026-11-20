@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from threading import Lock
 from datetime import datetime, timezone
 import yt_dlp
 from urllib.parse import urlparse
@@ -233,25 +234,29 @@ def _get_file(info, ydl):
 
 def _progress_hook(directory, stage):
     last = [0.0]
+    lock = Lock()
     def hook(data):
-        if os.path.exists(os.path.join(directory, "cancel.flag")):
-            raise RuntimeError("Загрузка отменена пользователем")
-        now = time.monotonic()
-        if data.get("status") == "downloading" and now - last[0] < 0.35:
-            return
-        last[0] = now
-        total = data.get("total_bytes") or data.get("total_bytes_estimate") or 0
-        downloaded = data.get("downloaded_bytes") or 0
-        percent = round(100.0 * downloaded / total, 1) if total else -1
-        payload = {"stage": stage, "percent": percent,
-                   "downloaded": downloaded, "total": total,
-                   "speed": data.get("speed") or 0,
-                   "eta": data.get("eta")}
-        target = os.path.join(directory, "progress.json")
-        temp = target + ".tmp"
-        with open(temp, "w", encoding="utf-8") as out:
-            json.dump(payload, out)
-        os.replace(temp, target)
+        with lock:
+            if os.path.exists(os.path.join(directory, "cancel.flag")):
+                raise RuntimeError("Загрузка отменена пользователем")
+            now = time.monotonic()
+            if data.get("status") == "downloading" and now - last[0] < 0.35:
+                return
+            last[0] = now
+            total = data.get("total_bytes") or data.get("total_bytes_estimate") or 0
+            downloaded = data.get("downloaded_bytes") or 0
+            percent = 100 if data.get("status") == "finished" else (
+                min(99.9, round(100.0 * downloaded / total, 1)) if total else -1
+            )
+            payload = {"stage": stage, "percent": percent,
+                       "downloaded": downloaded, "total": total,
+                       "speed": data.get("speed") or 0,
+                       "eta": data.get("eta")}
+            target = os.path.join(directory, "progress.json")
+            temp = target + ".tmp"
+            with open(temp, "w", encoding="utf-8") as out:
+                json.dump(payload, out)
+            os.replace(temp, target)
     return hook
 
 
@@ -259,6 +264,10 @@ def _fetch(url, directory, fmt_id, prefix, profile="legacy", cookie_file=None, u
     def run(with_cookies):
         opts = _options(profile, cookie_file, with_cookies, js_runtime_path)
         opts["progress_hooks"] = [_progress_hook(directory, prefix)]
+        opts["skip_unavailable_fragments"] = False
+        if prefix == "audio":
+            opts.update({"concurrent_fragment_downloads": 1, "socket_timeout": 20,
+                         "fragment_retries": 2, "retries": 2})
         opts.update({"format": fmt_id, "outtmpl": os.path.join(directory, prefix + ".%(ext)s"),
                      "overwrites": True, "restrictfilenames": True})
         with YoutubeDL(opts) as ydl:
