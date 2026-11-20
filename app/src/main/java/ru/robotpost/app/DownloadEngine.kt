@@ -45,10 +45,10 @@ object DownloadEngine {
         return Python.getInstance()
     }
 
-    fun latest(context: Context, channelUrl: String): List<LatestVideo> =
+    fun latest(context: Context, channelUrl: String, afterUrl: String = ""): List<LatestVideo> =
         YouTubeAuthStore.withCookieFile(context) { cookieFile ->
             val json = org.json.JSONArray(python(context).getModule("downloader")
-                .callAttr("latest_channel_videos", channelUrl, cookieFile, quickJsPath(context)).toString())
+                .callAttr("latest_channel_videos", channelUrl, cookieFile, quickJsPath(context), afterUrl).toString())
             (0 until json.length()).map { i ->
                 val item = json.getJSONObject(i)
                 LatestVideo(

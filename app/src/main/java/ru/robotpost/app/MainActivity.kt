@@ -171,6 +171,9 @@ class MainActivity : ComponentActivity() {
                 var queueStopRequested by remember { mutableStateOf(false) }
                 var queueSelected by remember { mutableStateOf(setOf<String>()) }
                 var channelLatestVideos by remember { mutableStateOf(emptyMap<String, List<LatestVideo>>()) }
+                var loadingChannels by remember { mutableStateOf(emptySet<String>()) }
+                var exhaustedChannels by remember { mutableStateOf(emptySet<String>()) }
+                var channelVideoErrors by remember { mutableStateOf(emptyMap<String, String>()) }
                 var selectedChannelVideos by remember { mutableStateOf(setOf<String>()) }
                 var channelsChecking by remember { mutableStateOf(false) }
                 var channelCheckStatus by remember { mutableStateOf("") }
@@ -442,12 +445,14 @@ class MainActivity : ComponentActivity() {
                                     ) { Text("Добавить канал") }
                                     Text("Сохранено: ${channels.size}", color = Muted)
                                     Button(
-                                        enabled = channels.isNotEmpty() && !channelsChecking,
+                                        enabled = channels.isNotEmpty() && !channelsChecking && loadingChannels.isEmpty(),
                                         modifier = Modifier.fillMaxWidth(),
                                         onClick = {
                                             channelsChecking = true
                                             channelCheckStatus = "Проверяю сохранённые каналы..."
                                             selectedChannelVideos = emptySet()
+                                            exhaustedChannels = emptySet()
+                                            channelVideoErrors = emptyMap()
                                             downloadScope.launch {
                                                 val found = linkedMapOf<String, List<LatestVideo>>()
                                                 val errors = mutableListOf<String>()
@@ -491,12 +496,42 @@ class MainActivity : ComponentActivity() {
                                         )
                                     }
                                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        items(channels) { channel ->
+                                        items(channels, key = { it }) { channel ->
                                             var expanded by remember(channel) { mutableStateOf(false) }
-                                            var loadingVideos by remember(channel) { mutableStateOf(false) }
+                                            val loadingVideos = channel in loadingChannels
                                             val videos = channelLatestVideos[channel].orEmpty()
-                                            var videoError by remember(channel) { mutableStateOf("") }
-                                            val channelScope = rememberCoroutineScope()
+                                            val videoError = channelVideoErrors[channel].orEmpty()
+                                            fun loadVideos(append: Boolean = false) {
+                                                if (channel in loadingChannels || channelsChecking) return
+                                                val previous = channelLatestVideos[channel].orEmpty()
+                                                val afterUrl = if (append) previous.lastOrNull()?.url.orEmpty() else ""
+                                                loadingChannels = loadingChannels + channel
+                                                channelVideoErrors = channelVideoErrors - channel
+                                                downloadScope.launch {
+                                                    try {
+                                                        val page = withContext(Dispatchers.IO) {
+                                                            DownloadEngine.latest(this@MainActivity, channel, afterUrl)
+                                                        }
+                                                        if (channel !in channels) return@launch
+                                                        val updated = if (append) (previous + page).distinctBy { it.url } else page
+                                                        channelLatestVideos = channelLatestVideos + (channel to updated)
+                                                        exhaustedChannels = if (page.size < 2) exhaustedChannels + channel
+                                                            else exhaustedChannels - channel
+                                                        if (!append) {
+                                                            val visibleUrls = channels.flatMap { channelLatestVideos[it].orEmpty() }
+                                                                .map { it.url }.toSet()
+                                                            selectedChannelVideos = selectedChannelVideos.intersect(visibleUrls)
+                                                        }
+                                                    } catch (e: CancellationException) {
+                                                        throw e
+                                                    } catch (e: Exception) {
+                                                        channelVideoErrors = channelVideoErrors +
+                                                            (channel to (e.localizedMessage ?: "Не удалось загрузить список"))
+                                                    } finally {
+                                                        loadingChannels = loadingChannels - channel
+                                                    }
+                                                }
+                                            }
                                             Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                                     Text(channel.substringAfterLast("/").ifBlank { "YouTube-канал" }, fontWeight = FontWeight.SemiBold)
@@ -521,19 +556,7 @@ class MainActivity : ComponentActivity() {
                                                         onClick = {
                                                             expanded = !expanded
                                                             if (expanded && channel !in channelLatestVideos && !loadingVideos && !channelsChecking) {
-                                                                loadingVideos = true
-                                                                videoError = ""
-                                                                channelScope.launch {
-                                                                    try {
-                                                                        val latest = withContext(Dispatchers.IO) {
-                                                                            DownloadEngine.latest(this@MainActivity, channel)
-                                                                        }
-                                                                        channelLatestVideos = channelLatestVideos + (channel to latest)
-                                                                        if (latest.isEmpty()) videoError = "Новые видео не найдены"
-                                                                    } catch (e: Exception) {
-                                                                        videoError = e.localizedMessage ?: "Не удалось загрузить список"
-                                                                    } finally { loadingVideos = false }
-                                                                }
+                                                                loadVideos()
                                                             }
                                                         }
                                                     ) {
@@ -541,14 +564,14 @@ class MainActivity : ComponentActivity() {
                                                             modifier = Modifier.fillMaxWidth(),
                                                             verticalAlignment = Alignment.CenterVertically
                                                         ) {
-                                                            Text("Последние 2 видео", modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                            Text(if (videos.size > 2) "Ролики канала (${videos.size})" else "Последние 2 видео", modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                                             Text(if (expanded) "⌃" else "⌄", color = Accent)
                                                         }
                                                     }
                                                     if (expanded) {
                                                         if (loadingVideos) {
                                                             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                                                            Text("Получаю последние видео...", color = Muted)
+                                                            Text("Загружаю список роликов…", color = Muted)
                                                         }
                                                         if (videoError.isNotBlank()) Text(videoError, color = Color(0xFFFF9999), style = MaterialTheme.typography.bodySmall)
                                                         videos.forEach { video ->
@@ -574,20 +597,24 @@ class MainActivity : ComponentActivity() {
                                                                 }
                                                             }
                                                         }
-                                                        if (!loadingVideos) TextButton(onClick = {
-                                                            loadingVideos = true
-                                                            videoError = ""
-                                                            channelScope.launch {
-                                                                try {
-                                                                    val latest = withContext(Dispatchers.IO) {
-                                                                        DownloadEngine.latest(this@MainActivity, channel)
-                                                                    }
-                                                                    channelLatestVideos = channelLatestVideos + (channel to latest)
-                                                                } catch (e: Exception) {
-                                                                    videoError = e.localizedMessage ?: "Не удалось обновить"
-                                                                } finally { loadingVideos = false }
-                                                            }
-                                                        }) { Text("Обновить список") }
+                                                        if (channel in exhaustedChannels) {
+                                                            Text(if (videos.isEmpty()) "Ролики не найдены" else "Больше роликов нет",
+                                                                color = Muted, style = MaterialTheme.typography.bodySmall)
+                                                        }
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween
+                                                        ) {
+                                                            TextButton(
+                                                                enabled = !loadingVideos && !channelsChecking,
+                                                                onClick = { loadVideos() }
+                                                            ) { Text("Обновить список") }
+                                                            TextButton(
+                                                                enabled = videos.isNotEmpty() && !loadingVideos &&
+                                                                    !channelsChecking && channel !in exhaustedChannels,
+                                                                onClick = { loadVideos(append = true) }
+                                                            ) { Text("Ещё ролики") }
+                                                        }
                                                     }
                                                 }
                                             }

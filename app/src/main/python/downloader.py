@@ -355,7 +355,7 @@ def _published_date(info):
     return ""
 
 
-def latest_channel_videos(channel_url, cookie_file=None, js_runtime_path=None):
+def latest_channel_videos(channel_url, cookie_file=None, js_runtime_path=None, after_url=""):
     url = _check_url(channel_url).rstrip("/")
     if "/@" not in url and "/channel/" not in url and "/c/" not in url and "/user/" not in url:
         raise ValueError("Нужна ссылка на YouTube-канал")
@@ -363,9 +363,31 @@ def latest_channel_videos(channel_url, cookie_file=None, js_runtime_path=None):
         url += "/videos"
     def load_channel(use_cookies=False):
         opts = _options(cookie_file=cookie_file, use_cookies=use_cookies, js_runtime_path=js_runtime_path)
-        opts.update({"extract_flat": "in_playlist", "playlistend": 2, "ignoreerrors": True})
+        opts.update({"extract_flat": "in_playlist", "ignoreerrors": True})
+        if after_url:
+            opts["lazy_playlist"] = True
+        else:
+            opts["playlistend"] = 2
         with YoutubeDL(opts) as ydl:
-            return ydl.extract_info(url, download=False)
+            info = ydl.extract_info(url, download=False)
+            if not info:
+                raise RuntimeError("Не удалось прочитать видео канала")
+            found_anchor = not after_url
+            page = {}
+            for item in info.get("entries") or []:
+                if not item or not item.get("id"):
+                    continue
+                link = "https://www.youtube.com/watch?v=" + str(item["id"])
+                if not found_anchor:
+                    found_anchor = link == after_url
+                    continue
+                if link != after_url:
+                    page.setdefault(link, item)
+                if len(page) == 2:
+                    break
+            if not found_anchor:
+                raise RuntimeError("Список канала изменился. Нажмите «Обновить список».")
+            return page
 
     try:
         info = load_channel()
@@ -373,39 +395,28 @@ def latest_channel_videos(channel_url, cookie_file=None, js_runtime_path=None):
         if not cookie_file or not _needs_login(exc):
             raise
         info = load_channel(use_cookies=True)
-    if not info:
-        raise RuntimeError("Не удалось прочитать последние видео канала")
     result = []
-    for item in info.get("entries") or []:
-        if not item:
-            continue
-        video_id = item.get("id")
-        link = item.get("url") or ""
-        if not link.startswith("https://"):
-            link = "https://www.youtube.com/watch?v=" + str(video_id or "")
-        if video_id and link.startswith("https://"):
-            title = item.get("title") or "Видео"
-            published_at = _published_date(item)
-            # Flat channel entries may omit dates and localized titles.
-            # Resolve each video individually, then accept yt-dlp's upload
-            # timestamp/date fields when upload_date is absent.
+    for link, item in info.items():
+        title = item.get("title") or "Видео"
+        published_at = _published_date(item)
+        # Flat channel entries may omit dates and localized titles.
+        # Resolve each video individually, then accept yt-dlp's upload
+        # timestamp/date fields when upload_date is absent.
+        try:
             try:
-                try:
-                    with YoutubeDL(_options(js_runtime_path=js_runtime_path)) as detail_ydl:
-                        detail = detail_ydl.extract_info(link, download=False)
-                except Exception as exc:
-                    if not cookie_file or not _needs_login(exc):
-                        raise
-                    with YoutubeDL(_options(cookie_file=cookie_file, use_cookies=True, js_runtime_path=js_runtime_path)) as detail_ydl:
-                        detail = detail_ydl.extract_info(link, download=False)
-                if detail:
-                    title = detail.get("title") or title
-                    published_at = _published_date(detail) or published_at
-            except Exception:
-                pass
-            result.append({"title": title, "url": link, "published_at": published_at})
-        if len(result) == 2:
-            break
+                with YoutubeDL(_options(js_runtime_path=js_runtime_path)) as detail_ydl:
+                    detail = detail_ydl.extract_info(link, download=False)
+            except Exception as exc:
+                if not cookie_file or not _needs_login(exc):
+                    raise
+                with YoutubeDL(_options(cookie_file=cookie_file, use_cookies=True, js_runtime_path=js_runtime_path)) as detail_ydl:
+                    detail = detail_ydl.extract_info(link, download=False)
+            if detail:
+                title = detail.get("title") or title
+                published_at = _published_date(detail) or published_at
+        except Exception:
+            pass
+        result.append({"title": title, "url": link, "published_at": published_at})
     return json.dumps(result, ensure_ascii=False)
 
 
