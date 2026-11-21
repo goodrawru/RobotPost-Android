@@ -41,7 +41,7 @@ object Mp4Muxer {
                 val a = muxer.addTrack(audioFormat)
                 muxer.start()
                 writeInterleaved(videoExtractor, audioExtractor, muxer, v, a,
-                    video.length() + audio.length(),
+                    video.length() + if (video == audio) 0L else audio.length(),
                     maxOf(4 * 1024 * 1024, videoFormat.maxInputSize(), audioFormat.maxInputSize()),
                     checkCancelled, onProgress)
                 checkCancelled()

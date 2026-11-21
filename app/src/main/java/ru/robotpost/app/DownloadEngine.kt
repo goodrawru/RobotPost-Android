@@ -126,16 +126,20 @@ object DownloadEngine {
             val audioPath = info.optString("audio")
             var video = videoPath.takeIf { it.isNotBlank() }?.let(::File)
             var audio = audioPath.takeIf { it.isNotBlank() }?.let(::File)
-            if (info.optBoolean("merge")) {
-                require(video != null && audio != null) { "Не хватает потоков для объединения" }
+            val transportStream = info.optBoolean("rutube") && video?.inputStream()?.use { it.read() == 0x47 } == true
+            if (info.optBoolean("merge") || transportStream) {
+                val sourceVideo = checkNotNull(video) { "Не найдена видеодорожка" }
+                val sourceAudio = if (transportStream) sourceVideo
+                    else checkNotNull(audio) { "Не найдена аудиодорожка" }
                 onProgress("Объединяю видео и аудио: 0%")
                 val available = android.os.StatFs(temp.absolutePath).availableBytes
-                require(available >= video.length() + audio.length()) {
+                val inputBytes = sourceVideo.length() + if (transportStream) 0L else sourceAudio.length()
+                require(available >= inputBytes) {
                     "Недостаточно свободного места для объединения видео и аудио"
                 }
                 val cancelFlag = File(temp, "cancel.flag")
                 video = Mp4Muxer.combine(
-                    video, audio, File(temp, "merged.mp4"),
+                    sourceVideo, sourceAudio, File(temp, "merged.mp4"),
                     checkCancelled = {
                         if (cancelFlag.exists()) error("Загрузка отменена пользователем")
                     },

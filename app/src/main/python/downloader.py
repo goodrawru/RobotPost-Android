@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 from threading import Lock
 from datetime import datetime, timezone
@@ -7,13 +8,23 @@ import yt_dlp
 from urllib.parse import urlparse
 from yt_dlp import YoutubeDL
 
+_RUTUBE_HOSTS = ("rutube.ru", "www.rutube.ru")
+
+
+def _is_rutube(url):
+    return (urlparse(url).hostname or "").lower() in _RUTUBE_HOSTS
+
+
 def _check_url(url):
     url = url.strip()
     parsed = urlparse(url)
-    if parsed.scheme != "https" or (parsed.hostname or "").lower() not in (
-        "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or parsed.username or parsed.password or host not in (
+        "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com", *_RUTUBE_HOSTS
     ):
-        raise ValueError("Нужна ссылка https://youtube.com или https://youtu.be")
+        raise ValueError("Нужна HTTPS-ссылка YouTube или RuTube")
+    if host in _RUTUBE_HOSTS:
+        return parsed._replace(netloc="rutube.ru", fragment="").geturl()
     return url
 
 def _options(profile="legacy", cookie_file=None, use_cookies=False, js_runtime_path=None):
@@ -23,6 +34,8 @@ def _options(profile="legacy", cookie_file=None, use_cookies=False, js_runtime_p
         "concurrent_fragment_downloads": 4,
         "http_headers": {"Accept-Language": "ru-RU,ru;q=0.9,en;q=0.5"},
     }
+    if profile == "rutube":
+        return opts
     # The extractor's own defaults are deliberately tried first on newer
     # yt-dlp versions. Forced clients can hide adaptive streams.
     clients = {
@@ -131,6 +144,20 @@ def _available(info, is_short=False):
     choices.sort(key=lambda item: item["height"], reverse=True)
     return choices
 
+def _rutube_formats(info):
+    formats = [fmt for fmt in info.get("formats") or [] if fmt.get("url") and fmt.get("format_id")]
+    choices = [{
+        "id": "single:" + str(fmt["format_id"]),
+        "label": f'{fmt["height"]}p · MP4 со звуком · {fmt["format_id"]}',
+        "height": fmt["height"],
+        "kind": "single",
+    } for fmt in formats if fmt.get("ext") == "mp4" and (fmt.get("height") or 0) > 0
+        and str(fmt.get("vcodec") or "").startswith(("avc1", "h264"))
+        and str(fmt.get("acodec") or "").startswith(("mp4a", "aac"))]
+    choices.sort(key=lambda item: item["height"], reverse=True)
+    return choices
+
+
 class _DiagnosticLogger:
     def __init__(self, warnings):
         self.warnings = warnings
@@ -187,13 +214,18 @@ def _inspect_best(url, cookie_file=None, use_cookies=False, js_runtime_path=None
 
 def inspect_video(url, cookie_file=None, js_runtime_path=None):
     checked_url = _check_url(url)
-    try:
-        info, choices, profile, reports = _inspect_best(checked_url, js_runtime_path=js_runtime_path)
-    except Exception as exc:
-        if not cookie_file or not _needs_login(exc):
-            raise
-        # Use the account session only when YouTube explicitly asks for sign-in.
-        info, choices, profile, reports = _inspect_best(checked_url, cookie_file, True, js_runtime_path)
+    if _is_rutube(checked_url):
+        with YoutubeDL(_options("rutube")) as ydl:
+            info = ydl.extract_info(checked_url, download=False)
+        choices, profile, reports = _rutube_formats(info), "rutube", []
+    else:
+        try:
+            info, choices, profile, reports = _inspect_best(checked_url, js_runtime_path=js_runtime_path)
+        except Exception as exc:
+            if not cookie_file or not _needs_login(exc):
+                raise
+            # Use the account session only when YouTube explicitly asks for sign-in.
+            info, choices, profile, reports = _inspect_best(checked_url, cookie_file, True, js_runtime_path)
     for choice in choices:
         choice["id"] = profile + "|" + choice["id"]
     raw_formats = info.get("formats") or []
@@ -214,7 +246,7 @@ def inspect_video(url, cookie_file=None, js_runtime_path=None):
     diagnostics.sort(key=lambda item: item["height"], reverse=True)
     return json.dumps({
         "title": info.get("title") or "Видео",
-        "channel": info.get("channel") or info.get("uploader") or "YouTube",
+        "channel": info.get("channel") or info.get("uploader") or ("RuTube" if profile == "rutube" else "YouTube"),
         "formats": choices,
         "profile": profile,
         "yt_dlp_version": yt_dlp.version.__version__,
@@ -290,7 +322,9 @@ def download_video(url, directory, choice, cookie_file=None, js_runtime_path=Non
         profile, selection = choice.split("|", 1)
     else:
         profile, selection = "legacy", choice
-    if profile not in ("auto", "legacy", "alternate", "tv"):
+    if _is_rutube(url):
+        profile, cookie_file, js_runtime_path = "rutube", None, None
+    elif profile not in ("auto", "legacy", "alternate", "tv"):
         raise ValueError("Неизвестный профиль загрузки")
     use_cookies = False
     try:
@@ -302,7 +336,8 @@ def download_video(url, directory, choice, cookie_file=None, js_runtime_path=Non
         use_cookies = True
         with YoutubeDL(_options(profile, cookie_file, True, js_runtime_path)) as ydl:
             info = ydl.extract_info(url, download=False)
-    valid = {item["id"] for item in _available(info, is_short=_is_youtube_short(url, info))}
+    choices = _rutube_formats(info) if profile == "rutube" else _available(info, is_short=_is_youtube_short(url, info))
+    valid = {item["id"] for item in choices}
     if selection not in valid:
         raise ValueError("Формат изменился. Обнови список форматов.")
     kind, fmt = selection.split(":", 1)
@@ -320,9 +355,10 @@ def download_video(url, directory, choice, cookie_file=None, js_runtime_path=Non
         paths = [video, ""]
     return json.dumps({
         "video": paths[0], "audio": paths[1], "merge": kind == "merge",
+        "rutube": profile == "rutube",
         "title": info.get("title") or info.get("id") or "Видео",
-        "channel": info.get("channel") or info.get("uploader") or "YouTube",
-        "date": info.get("upload_date") or "",
+        "channel": info.get("channel") or info.get("uploader") or ("RuTube" if profile == "rutube" else "YouTube"),
+        "date": info.get("upload_date") or ("".join(reversed(_published_date(info).split("."))) if profile == "rutube" else ""),
         "description": info.get("description") or "",
         "chapters": [{"start_time": chapter.get("start_time"), "title": chapter.get("title") or ""}
                      for chapter in (info.get("chapters") or [])],
@@ -357,13 +393,18 @@ def _published_date(info):
 
 def latest_channel_videos(channel_url, cookie_file=None, js_runtime_path=None, after_url=""):
     url = _check_url(channel_url).rstrip("/")
-    if "/@" not in url and "/channel/" not in url and "/c/" not in url and "/user/" not in url:
+    rutube = _is_rutube(url)
+    if rutube:
+        if not re.fullmatch(r"/channel/\d+(?:/videos)?", urlparse(url).path):
+            raise ValueError("Нужна ссылка RuTube вида /channel/123456/")
+        cookie_file = js_runtime_path = None
+    elif "/@" not in url and "/channel/" not in url and "/c/" not in url and "/user/" not in url:
         raise ValueError("Нужна ссылка на YouTube-канал")
     if not url.endswith("/videos"):
         url += "/videos"
     def load_channel(use_cookies=False):
-        opts = _options(cookie_file=cookie_file, use_cookies=use_cookies, js_runtime_path=js_runtime_path)
-        opts.update({"extract_flat": "in_playlist", "ignoreerrors": True})
+        opts = _options("rutube" if rutube else "legacy", cookie_file, use_cookies, js_runtime_path)
+        opts.update({"extract_flat": "in_playlist", "ignoreerrors": not rutube})
         if after_url:
             opts["lazy_playlist"] = True
         else:
@@ -377,7 +418,8 @@ def latest_channel_videos(channel_url, cookie_file=None, js_runtime_path=None, a
             for item in info.get("entries") or []:
                 if not item or not item.get("id"):
                     continue
-                link = "https://www.youtube.com/watch?v=" + str(item["id"])
+                link = (f'https://rutube.ru/video/{item["id"]}/' if rutube
+                        else "https://www.youtube.com/watch?v=" + str(item["id"]))
                 if not found_anchor:
                     found_anchor = link == after_url
                     continue
@@ -399,6 +441,9 @@ def latest_channel_videos(channel_url, cookie_file=None, js_runtime_path=None, a
     for link, item in info.items():
         title = item.get("title") or "Видео"
         published_at = _published_date(item)
+        if rutube:
+            result.append({"title": title, "url": link, "published_at": published_at})
+            continue
         # Flat channel entries may omit dates and localized titles.
         # Resolve each video individually, then accept yt-dlp's upload
         # timestamp/date fields when upload_date is absent.
@@ -425,13 +470,18 @@ def inspect_playlist(playlist_url, limit=100, cookie_file=None, js_runtime_path=
     url = _check_url(playlist_url)
     parsed = urlparse(url)
     from urllib.parse import parse_qs
-    if not parse_qs(parsed.query).get("list") and "/playlist" not in parsed.path:
+    rutube = _is_rutube(url)
+    if rutube:
+        if not re.fullmatch(r"/plst/\d+/?", parsed.path):
+            raise ValueError("Нужна ссылка RuTube вида /plst/123456/")
+        cookie_file = js_runtime_path = None
+    elif not parse_qs(parsed.query).get("list") and "/playlist" not in parsed.path:
         raise ValueError("Нужна ссылка YouTube-плейлиста с параметром list")
     limit = max(1, min(int(limit), 100))
     # Playlist metadata should fail quickly on a broken VPN/DNS connection.
     # Video downloads retain their separate retry policy.
     def load_playlist(use_cookies=False):
-        opts = _options("auto", cookie_file, use_cookies, js_runtime_path)
+        opts = _options("rutube" if rutube else "auto", cookie_file, use_cookies, js_runtime_path)
         opts.update({"noplaylist": False, "extract_flat": "in_playlist",
                      "playlistend": limit, "ignoreerrors": True,
                      "socket_timeout": 12, "retries": 1,
@@ -457,7 +507,7 @@ def inspect_playlist(playlist_url, limit=100, cookie_file=None, js_runtime_path=
             continue
         seen.add(video_id)
         entries.append({"title": item.get("title") or "Видео",
-                        "url": "https://www.youtube.com/watch?v=" + video_id})
+                        "url": f"https://rutube.ru/video/{video_id}/" if rutube else "https://www.youtube.com/watch?v=" + video_id})
     if not entries:
         raise RuntimeError("В плейлисте нет доступных видео")
     return json.dumps({"title": info.get("title") or "Плейлист",

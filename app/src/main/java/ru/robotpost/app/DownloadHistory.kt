@@ -23,6 +23,12 @@ object DownloadHistory {
             val id = uri.getQueryParameter("v")?.takeIf { it.isNotBlank() } ?: pathId
             if (!id.isNullOrBlank()) return "youtube:$id"
         }
+        if (uri != null && host in setOf("rutube.ru", "www.rutube.ru")) {
+            val path = uri.pathSegments
+            val id = path.lastOrNull()
+            if (path.firstOrNull() in setOf("video", "embed", "play", "live") &&
+                id != null && id.matches(Regex("[0-9a-f]{32}"))) return "rutube:$id"
+        }
         return "url:" + source.trim().substringBefore("#")
     }
 

@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -48,6 +49,21 @@ private val Separator = Color(0xFF364052)
 private val SoftPanel = Color(0xFF222C3E)
 private val CardBorder = Color(0xFF344155)
 private val FieldFill = Color(0xFF192335)
+
+private fun Uri.isRutube() = host.equals("rutube.ru", ignoreCase = true) ||
+    host.equals("www.rutube.ru", ignoreCase = true)
+
+private fun Uri.isPlaylistLink(): Boolean {
+    if (isRutube()) return pathSegments.size == 2 && pathSegments[0] == "plst" &&
+        pathSegments[1].all { it.isDigit() }
+    return host?.lowercase() in setOf("youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com") &&
+        (path == "/playlist" || (getQueryParameter("list") != null && getQueryParameter("v").isNullOrBlank()))
+}
+
+private val rutubeChannelNames = mapOf(
+    "32311072" to "Минаев",
+    "42773594" to "Чтиво"
+)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -204,7 +220,9 @@ class MainActivity : ComponentActivity() {
                 var expandedArchive by remember { mutableStateOf(setOf<String>()) }
                 var queueDetailsExpanded by remember { mutableStateOf(false) }
                 var failedDetailsExpanded by remember { mutableStateOf(false) }
-                var linkInput by remember { mutableStateOf(if (intent?.action == Intent.ACTION_SEND) (intent.getStringExtra(Intent.EXTRA_TEXT) ?: "") else "") }
+                var linkInput by remember { mutableStateOf(if (intent?.action == Intent.ACTION_SEND) (intent.getStringExtra(Intent.EXTRA_TEXT)?.let { shared ->
+                    Regex("""https://[^\s<>]+""").find(shared)?.value?.trimEnd(')', ',', '.') ?: shared
+                }.orEmpty()) else "") }
                 var linkError by remember { mutableStateOf("") }
                 var queueTotal by remember { mutableIntStateOf(0) }
                 var queueProcessed by remember { mutableIntStateOf(0) }
@@ -256,13 +274,7 @@ class MainActivity : ComponentActivity() {
                     val inputUrl = linkInput.trim()
                     if (!inputUrl.startsWith("https://")) return@LaunchedEffect
                     val inputUri = Uri.parse(inputUrl)
-                    val playlistLink = inputUri.host?.lowercase() in listOf(
-                        "youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"
-                    ) && (inputUri.path == "/playlist" || (
-                        inputUri.getQueryParameter("list") != null &&
-                        inputUri.getQueryParameter("v").isNullOrBlank()
-                    ))
-                    if (playlistLink) {
+                    if (inputUri.isPlaylistLink()) {
                         playlistUrl = inputUrl
                         inspectStatus = "Плейлист распознан. Выберите ролики для очереди."
                         return@LaunchedEffect
@@ -271,7 +283,7 @@ class MainActivity : ComponentActivity() {
                     inspecting = true
                     inspectStatus = "Проверка..."
                     try {
-                        val info = withContext(Dispatchers.IO) { DownloadEngine.inspect(this@MainActivity, linkInput.trim()) }
+                        val info = withContext(Dispatchers.IO) { DownloadEngine.inspect(this@MainActivity, inputUrl) }
                         inspectedTitle = info.optString("title")
                         diagnostics = buildString {
                             append("yt-dlp ").append(info.optString("yt_dlp_version")).append("\n")
@@ -311,7 +323,8 @@ class MainActivity : ComponentActivity() {
                         selectedFormat = formatChoices.firstOrNull()?.first.orEmpty()
                         showFormatPicker = false
                         inspectStatus = if (formatChoices.isEmpty()) {
-                            "Не найдена русская оригинальная дорожка. Альтернативный дубляж не будет выбран."
+                            if (inputUri.isRutube()) "Не найден формат MP4 со звуком."
+                            else "Не найдена русская оригинальная дорожка. Альтернативный дубляж не будет выбран."
                         } else "Найдено форматов: " + formatChoices.size
                     } catch (e: Exception) {
                         val errorText = e.localizedMessage ?: "Нет доступа к видео"
@@ -326,15 +339,17 @@ class MainActivity : ComponentActivity() {
                 var newestFirst by remember { mutableStateOf(true) }
                 var confirmClear by remember { mutableStateOf(false) }
                 var channels by remember { mutableStateOf(prefs.getString("channels", "")!!.split("\n").filter { it.isNotBlank() }) }
+                var rutubeChannels by remember {
+                    mutableStateOf(
+                        prefs.getString("rutubeChannels", null)?.lines()?.filter { it.isNotBlank() }
+                            ?: rutubeChannelNames.keys.map { "https://rutube.ru/channel/$it/" }
+                    )
+                }
+                var showRutubeChannels by rememberSaveable { mutableStateOf(false) }
                 var autoCheck by remember { mutableStateOf(prefs.getBoolean("autoCheck", false)) }
                 var description by remember { mutableStateOf(prefs.getString("description", "") ?: "") }
                 val unifiedPlaylistLink = remember(linkInput) {
-                    runCatching {
-                        val uri = Uri.parse(linkInput.trim())
-                        uri.host?.lowercase() in listOf("youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com") &&
-                            (uri.path == "/playlist" || (uri.getQueryParameter("list") != null &&
-                                uri.getQueryParameter("v").isNullOrBlank()))
-                    }.getOrDefault(false)
+                    runCatching { Uri.parse(linkInput.trim()).isPlaylistLink() }.getOrDefault(false)
                 }
                 val tabs = listOf("Главная", "Каналы", "Загрузки", "Сборка", "Архив", "Настройки")
                 val glyphs = listOf("⌂", "▣", "⇩", "⊕", "▤", "⚙")
@@ -407,7 +422,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 item {
                                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                        Metric("Каналы", channels.size.toString(), Modifier.weight(1f))
+                                        Metric("Каналы", (channels.size + rutubeChannels.size).toString(), Modifier.weight(1f))
                                         Metric("Ссылки", savedLinks.size.toString(), Modifier.weight(1f))
                                     }
                                 }
@@ -417,35 +432,70 @@ class MainActivity : ComponentActivity() {
                                 item { ActionTile("⚙", "Параметры", "Качество и проверка каналов") { page = 4 } }
                             }
                             1 -> {
-                                var input by remember { mutableStateOf("") }
-                                var error by remember { mutableStateOf("") }
+                                var input by remember(showRutubeChannels) { mutableStateOf("") }
+                                var error by remember(showRutubeChannels) { mutableStateOf("") }
                                 var channelToDelete by remember { mutableStateOf<String?>(null) }
+                                val visibleChannels = if (showRutubeChannels) rutubeChannels else channels
+                                val sourceLabel = if (showRutubeChannels) "RuTube" else "YouTube"
+                                fun saveChannels(updated: List<String>) {
+                                    val setting = if (showRutubeChannels) "rutubeChannels" else "channels"
+                                    prefs.edit().putString(setting, updated.joinToString("\n")).apply()
+                                    if (showRutubeChannels) rutubeChannels = updated else channels = updated
+                                }
                                 Column(Modifier.fillMaxSize().padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        listOf(false, true).forEach { rutube ->
+                                            FilterChip(
+                                                selected = showRutubeChannels == rutube,
+                                                enabled = !channelsChecking,
+                                                onClick = {
+                                                    if (showRutubeChannels != rutube) {
+                                                        showRutubeChannels = rutube
+                                                        selectedChannelVideos = emptySet()
+                                                        channelCheckStatus = ""
+                                                        channelQueueMessage = ""
+                                                        channelToDelete = null
+                                                    }
+                                                },
+                                                label = { Text(if (rutube) "RuTube" else "YouTube") }
+                                            )
+                                        }
+                                    }
                                     OutlinedTextField(
                                         value = input, onValueChange = { input = it; error = "" },
-                                        label = { Text("Ссылка на YouTube-канал") },
-                                        placeholder = { Text("https://youtube.com/@channel") },
+                                        label = { Text("Ссылка на канал $sourceLabel") },
+                                        placeholder = { Text(if (showRutubeChannels) "https://rutube.ru/channel/123456/" else "https://youtube.com/@channel") },
                                         modifier = Modifier.fillMaxWidth(), singleLine = true
                                     )
                                     if(error.isNotEmpty()) Text(error, color = Color(0xFFFF9999))
                                     Button(
                                         modifier = Modifier.fillMaxWidth(),
                                         onClick = {
-                                            val v = input.trim()
-                                            if(!v.startsWith("https://youtube.com/") && !v.startsWith("https://www.youtube.com/") && !v.startsWith("https://m.youtube.com/")) {
-                                                error = "Укажи ссылку на канал youtube.com"
-                                            } else if(channels.contains(v)) {
-                                                error = "Этот канал уже добавлен"
+                                            val uri = Uri.parse(input.trim())
+                                            val segments = uri.pathSegments
+                                            val valid = uri.scheme == "https" && if (showRutubeChannels) {
+                                                uri.isRutube() && segments.size in 2..3 && segments[0] == "channel" &&
+                                                    segments[1].all { it in '0'..'9' } &&
+                                                    (segments.size == 2 || segments[2] == "videos")
                                             } else {
-                                                channels = channels + v
-                                                prefs.edit().putString("channels", channels.joinToString("\n")).apply()
+                                                uri.host?.lowercase() in setOf("youtube.com", "www.youtube.com", "m.youtube.com")
+                                            }
+                                            if (!valid) {
+                                                error = "Укажи ссылку на канал $sourceLabel"
+                                            } else {
+                                                val link = if (showRutubeChannels) "https://rutube.ru/channel/${segments[1]}/" else input.trim()
+                                                if (link in visibleChannels) {
+                                                    error = "Этот канал уже добавлен"
+                                                } else {
+                                                    saveChannels(visibleChannels + link)
+                                                }
                                                 input = ""
                                             }
                                         }
                                     ) { Text("Добавить канал") }
-                                    Text("Сохранено: ${channels.size}", color = Muted)
+                                    Text("Сохранено: ${visibleChannels.size}", color = Muted)
                                     Button(
-                                        enabled = channels.isNotEmpty() && !channelsChecking && loadingChannels.isEmpty(),
+                                        enabled = visibleChannels.isNotEmpty() && !channelsChecking && loadingChannels.isEmpty(),
                                         modifier = Modifier.fillMaxWidth(),
                                         onClick = {
                                             channelsChecking = true
@@ -456,7 +506,7 @@ class MainActivity : ComponentActivity() {
                                             downloadScope.launch {
                                                 val found = linkedMapOf<String, List<LatestVideo>>()
                                                 val errors = mutableListOf<String>()
-                                                for (channel in channels) {
+                                                for (channel in visibleChannels) {
                                                     try {
                                                         found[channel] = withContext(Dispatchers.IO) {
                                                             DownloadEngine.latest(this@MainActivity, channel)
@@ -466,10 +516,10 @@ class MainActivity : ComponentActivity() {
                                                             (e.localizedMessage ?: "ошибка проверки")
                                                     }
                                                 }
-                                                channelLatestVideos = found
+                                                channelLatestVideos = (channelLatestVideos - visibleChannels.toSet()) + found
                                                 channelsChecking = false
                                                 val total = found.values.sumOf { it.size }
-                                                channelCheckStatus = "Проверено каналов: ${found.size} из ${channels.size} · видео: $total" +
+                                                channelCheckStatus = "Проверено каналов: ${found.size} из ${visibleChannels.size} · видео: $total" +
                                                     if (errors.isEmpty()) "" else " · ошибок: ${errors.size}"
                                                 if (errors.isNotEmpty()) {
                                                     channelCheckStatus += "\n" + errors.take(3).joinToString("\n")
@@ -478,7 +528,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     ) { Text(if (channelsChecking) "Проверяю каналы..." else "↻  Проверить каналы") }
                                     if (channelCheckStatus.isNotBlank()) Text(channelCheckStatus, color = if (channelCheckStatus.contains("ошибок:")) Color(0xFFFFC48A) else Muted)
-                                    val availableChannelVideos = channels.flatMap { channelLatestVideos[it].orEmpty() }
+                                    val availableChannelVideos = visibleChannels.flatMap { channelLatestVideos[it].orEmpty() }
                                     
                                     if (channelToDelete != null) {
                                         AlertDialog(
@@ -487,8 +537,7 @@ class MainActivity : ComponentActivity() {
                                             text = { Text("Канал исчезнет из списка RobotPost. Файлы не затрагиваются.") },
                                             confirmButton = {
                                                 TextButton(onClick = {
-                                                    channels = channels - channelToDelete!!
-                                                    prefs.edit().putString("channels", channels.joinToString("\n")).apply()
+                                                    saveChannels(visibleChannels - channelToDelete!!)
                                                     channelToDelete = null
                                                 }) { Text("Удалить") }
                                             },
@@ -496,7 +545,7 @@ class MainActivity : ComponentActivity() {
                                         )
                                     }
                                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        items(channels, key = { it }) { channel ->
+                                        items(visibleChannels, key = { it }) { channel ->
                                             var expanded by remember(channel) { mutableStateOf(false) }
                                             val loadingVideos = channel in loadingChannels
                                             val videos = channelLatestVideos[channel].orEmpty()
@@ -512,13 +561,13 @@ class MainActivity : ComponentActivity() {
                                                         val page = withContext(Dispatchers.IO) {
                                                             DownloadEngine.latest(this@MainActivity, channel, afterUrl)
                                                         }
-                                                        if (channel !in channels) return@launch
+                                                        if (channel !in channels && channel !in rutubeChannels) return@launch
                                                         val updated = if (append) (previous + page).distinctBy { it.url } else page
                                                         channelLatestVideos = channelLatestVideos + (channel to updated)
                                                         exhaustedChannels = if (page.size < 2) exhaustedChannels + channel
                                                             else exhaustedChannels - channel
                                                         if (!append) {
-                                                            val visibleUrls = channels.flatMap { channelLatestVideos[it].orEmpty() }
+                                                            val visibleUrls = (channels + rutubeChannels).flatMap { channelLatestVideos[it].orEmpty() }
                                                                 .map { it.url }.toSet()
                                                             selectedChannelVideos = selectedChannelVideos.intersect(visibleUrls)
                                                         }
@@ -534,13 +583,14 @@ class MainActivity : ComponentActivity() {
                                             }
                                             Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
                                                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                                    Text(channel.substringAfterLast("/").ifBlank { "YouTube-канал" }, fontWeight = FontWeight.SemiBold)
+                                                    Text(rutubeChannelNames[Uri.parse(channel).lastPathSegment].takeIf { showRutubeChannels }
+                                                        ?: channel.trimEnd('/').substringAfterLast('/').ifBlank { "Канал $sourceLabel" }, fontWeight = FontWeight.SemiBold)
                                                     Text(channel, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
                                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                                                         OutlinedButton(onClick = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(channel))) }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 4.dp)) { Text("Открыть", style = MaterialTheme.typography.labelSmall) }
                                                         OutlinedButton(onClick = {
                                                             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("YouTube channel", channel))
+                                                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Канал $sourceLabel", channel))
                                                         }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 4.dp)) { Text("Копия", style = MaterialTheme.typography.labelSmall) }
                                                         OutlinedButton(onClick = {
                                                             val share = Intent(Intent.ACTION_SEND).apply {
@@ -685,7 +735,7 @@ class MainActivity : ComponentActivity() {
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 item { SectionTitle("Видео или плейлист") }
-                                item { OutlinedTextField(value = linkInput, onValueChange = { linkInput = it; linkError = "" }, label = { Text("Одна ссылка YouTube") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+                                item { OutlinedTextField(value = linkInput, onValueChange = { linkInput = it; linkError = "" }, label = { Text("Ссылка YouTube или RuTube") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
                                 if (linkInput.isNotBlank()) item { Text(if (unifiedPlaylistLink) "Распознан плейлист · можно выбрать ролики" else "Одиночное видео · выбор качества и сохранение", color = Mint, style = MaterialTheme.typography.bodySmall) }
                                 if (!unifiedPlaylistLink && linkInput.isNotBlank()) item {
                                     Surface(color = Panel, shape = Shape, border = BorderStroke(1.dp, CardBorder), tonalElevation = 1.dp) {
@@ -693,7 +743,7 @@ class MainActivity : ComponentActivity() {
                                             Text("Доступные форматы", color = Accent, fontWeight = FontWeight.Bold)
                                             if (inspecting) {
                                                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                                                Text("Ищу форматы YouTube...", color = Muted)
+                                                Text("Ищу форматы…", color = Muted)
                                             } else if (inspectStatus.isNotBlank()) Text(inspectStatus, color = Muted)
                                             if (inspectedTitle.isNotBlank()) Text(inspectedTitle, fontWeight = FontWeight.SemiBold)
                                             if (diagnostics.isNotBlank()) {
